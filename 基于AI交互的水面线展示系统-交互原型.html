@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基于AI交互的水面线展示系统 · 交互原型</title>
+<style>
+  :root{
+    --ink:#16202b; --muted:#5b6b7b; --faint:#8b98a6;
+    --line:#dfe4ea; --line2:#eef1f5;
+    --bg:#f5f7f9; --card:#ffffff;
+    --accent:#1f4e79; --accent2:#2e6da4;
+    --sub:#2e6da4; --sup:#c9741f; --crit:#b23c4a;
+    --hn:#7d8b99; --ok:#2f7d54; --warn:#a8761f; --err:#b23c4a;
+    --shadow:0 1px 2px rgba(22,32,43,.05),0 4px 14px rgba(22,32,43,.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .topbar{
+    height:52px; background:var(--card); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px; padding:0 16px; position:sticky; top:0; z-index:30;
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;min-width:0;}
+  .brand b{font-size:16px;letter-spacing:.01em;white-space:nowrap;}
+  .brand span{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .grow{flex:1;}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
+    background:#f3f6f9;border:1px solid var(--line);border-radius:99px;padding:3px 10px;white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);}
+  .dot.off{background:var(--warn);}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;}
+  .seg button{
+    border:0;background:#fff;padding:6px 13px;font-size:12.5px;color:var(--muted);
+    cursor:pointer;font-family:inherit;
+  }
+  .seg button+button{border-left:1px solid var(--line);}
+  .seg button.on{background:var(--accent);color:#fff;}
+  .layout{
+    display:grid;grid-template-columns:392px minmax(0,1fr);gap:14px;
+    padding:14px;align-items:start;max-width:1720px;margin:0 auto;
+  }
+  .left{display:flex;flex-direction:column;gap:12px;}
+  .right{display:flex;flex-direction:column;gap:12px;min-width:0;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);}
+  .card-h{
+    display:flex;align-items:center;gap:8px;padding:10px 13px;border-bottom:1px solid var(--line2);
+    font-size:12.5px;font-weight:600;color:var(--muted);letter-spacing:.04em;
+  }
+  .card-h .tag{margin-left:auto;font-weight:400;color:var(--faint);letter-spacing:0;font-size:11.5px;}
+  .card-b{padding:12px 13px;}
+
+  /* chat */
+  .chat-body{height:236px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#fcfdfe;}
+  .msg{max-width:92%;font-size:13.2px;line-height:1.65;padding:8px 11px;border-radius:9px;white-space:pre-wrap;word-break:break-word;}
+  .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
+  .msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px;}
+  .msg.sys{align-self:center;background:#eef3f8;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:99px;}
+  .msg .who{display:block;font-size:11px;color:var(--faint);margin-bottom:3px;letter-spacing:.05em;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 9px;}
+  .chip{
+    font-size:12px;color:var(--accent2);background:#f1f6fb;border:1px solid #d9e6f2;
+    border-radius:99px;padding:3px 9px;cursor:pointer;
+  }
+  .chip:hover{background:#e6f0f9;}
+  .chat-input{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line2);}
+  .chat-input input{
+    flex:1;border:1px solid var(--line);border-radius:7px;padding:8px 11px;font-size:13px;
+    font-family:inherit;outline:none;background:#fff;
+  }
+  .chat-input input:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(46,109,164,.1);}
+  button.primary{
+    border:0;background:var(--accent);color:#fff;border-radius:7px;padding:8px 15px;
+    font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap;
+  }
+  button.primary:hover{background:#1a4468;}
+  button.ghost{
+    border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:6px;
+    padding:5px 10px;font-size:12px;font-family:inherit;cursor:pointer;
+  }
+  button.ghost:hover{border-color:var(--accent2);color:var(--accent2);}
+
+  /* form */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;}
+  .field{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .field label{font-size:11.5px;color:var(--faint);letter-spacing:.03em;}
+  .field input,.field select{
+    border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:13px;
+    font-family:inherit;outline:none;background:#fff;color:var(--ink);width:100%;
+  }
+  .field input:focus,.field select:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(46,109,164,.1);}
+  table.reach{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.reach th{font-weight:500;color:var(--faint);font-size:11px;text-align:left;padding:0 4px 4px;}
+  table.reach td{padding:2px 4px;}
+  table.reach input{
+    width:100%;border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12.5px;
+    font-family:inherit;outline:none;
+  }
+  table.reach input:focus{border-color:var(--accent2);}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.5;}
+  .hint.warn{color:var(--warn);}
+
+  /* charts */
+  .chartbox{position:relative;}
+  canvas{display:block;width:100%;height:100%;}
+  #profileWrap{height:352px;}
+  #sectionWrap{height:250px;}
+  .legend{
+    display:flex;flex-wrap:wrap;gap:14px;padding:8px 13px 10px;font-size:11.5px;color:var(--muted);
+    border-top:1px solid var(--line2);
+  }
+  .legend i{display:inline-block;width:16px;height:0;border-top-width:2.4px;border-top-style:solid;margin-right:5px;vertical-align:middle;}
+  .legend .dash i{border-top-style:dashed;border-top-width:1.6px;}
+  .tip{
+    position:absolute;pointer-events:none;background:rgba(22,32,43,.93);color:#fff;font-size:11.5px;
+    padding:6px 9px;border-radius:6px;line-height:1.55;white-space:nowrap;transform:translate(-50%,-115%);
+    opacity:0;transition:opacity .1s;z-index:20;
+  }
+  .tip.on{opacity:1;}
+
+  .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;}
+
+  /* result */
+  .badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:11px;}
+  .badge{
+    font-size:13px;font-weight:600;padding:2px 9px;border-radius:5px;letter-spacing:.02em;
+    background:#eef3f8;color:var(--accent);border:1px solid #d7e4ef;
+  }
+  .badge.sub{background:#eaf2fa;color:var(--sub);border-color:#cfe0f0;}
+  .badge.sup{background:#fbf0e4;color:var(--sup);border-color:#f0dcc2;}
+  .badge.junc{background:#fdeef0;color:var(--crit);border-color:#f2ccd2;}
+  .arrow{color:#c3ccd5;font-size:12px;}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;}
+  .kv div{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line2);}
+  .kv span:first-child{color:var(--faint);}
+  .kv span:last-child{font-variant-numeric:tabular-nums;font-weight:600;}
+  details.mech{margin-top:12px;border-top:1px solid var(--line2);padding-top:10px;}
+  details.mech summary{
+    cursor:pointer;font-size:12.5px;color:var(--accent2);list-style:none;outline:none;
+    display:flex;align-items:center;gap:6px;
+  }
+  details.mech summary::-webkit-details-marker{display:none;}
+  details.mech summary::before{content:"▸";font-size:11px;transition:transform .15s;}
+  details.mech[open] summary::before{transform:rotate(90deg);}
+  ol.reasons{margin:9px 0 0;padding-left:20px;font-size:12.3px;color:var(--muted);line-height:1.75;}
+  ol.reasons li{margin-bottom:2px;}
+  .wlist{margin-top:9px;display:flex;flex-direction:column;gap:5px;}
+  .witem{font-size:12px;color:var(--warn);background:#fdf7ec;border-left:2px solid var(--warn);padding:5px 9px;border-radius:0 4px 4px 0;}
+
+  table.props{width:100%;border-collapse:collapse;font-size:12.2px;margin-top:10px;}
+  table.props td{padding:4px 6px;border-bottom:1px solid var(--line2);}
+  table.props td:nth-child(odd){color:var(--faint);}
+  table.props td:nth-child(even){text-align:right;font-variant-numeric:tabular-nums;font-weight:600;}
+
+  .hist{max-height:132px;overflow-y:auto;}
+  .hitem{
+    display:flex;gap:8px;align-items:baseline;padding:6px 4px;border-bottom:1px solid var(--line2);
+    font-size:12.3px;cursor:pointer;border-radius:4px;
+  }
+  .hitem:hover{background:#f7fafd;}
+  .hitem .t{color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .hitem .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .empty{font-size:12px;color:var(--faint);padding:6px 2px;}
+  .footnote{font-size:11.5px;color:var(--faint);padding:10px 13px;border-top:1px solid var(--line2);line-height:1.6;}
+
+  @media(max-width:1180px){
+    .layout{grid-template-columns:1fr;}
+    .row2{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <b>基于AI交互的水面线展示系统</b>
+    <span>明渠非均匀流十二型水面曲线的自然语言计算与可视化</span>
+  </div>
+  <div class="grow"></div>
+  <div class="seg" id="modeSeg">
+    <button data-mode="teaching" class="on">教学模式 α=1.00</button>
+    <button data-mode="engineering">工程模式 α=1.05</button>
+  </div>
+  <span class="pill" id="aiStatus"><i class="dot off"></i>AI 在线 · 本地规则解析（示例）</span>
+</header>
+
+<div class="layout">
+  <!-- ================= 左栏 ================= -->
+  <aside class="left">
+
+    <section class="card">
+      <div class="card-h">对话交互 <span class="tag">自然语言 → 参数 → 计算</span></div>
+      <div class="chat-body" id="chatBody"></div>
+      <div class="chips" id="chips"></div>
+      <div class="chat-input">
+        <input id="chatInput" placeholder="例如：矩形渠 底宽5米 糙率0.015 坡度千分之一 流量10个方 水深2米">
+        <button class="primary" id="sendBtn">发送</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">参数表单 <span class="tag">可手改，改后需重新计算</span></div>
+      <div class="card-b">
+        <div class="grid3" style="margin-bottom:10px;">
+          <div class="field"><label>流量 Q (m³/s)</label><input id="fQ" type="number" step="0.1" value="10"></div>
+          <div class="field"><label>重力加速度 g</label><input id="fg" type="number" step="0.01" value="9.81"></div>
+          <div class="field"><label>α / β（按模式）</label><input id="fAlpha" type="text" value="1.00 / 1.00" disabled></div>
+        </div>
+
+        <div style="font-size:11.5px;color:var(--faint);margin:4px 0 6px;">渠段（段内棱柱体，段间折线变坡）</div>
+        <table class="reach" id="reachTable"></table>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="ghost" id="addReach">＋ 增加渠段</button>
+          <button class="ghost" id="delReach">− 删除末段</button>
+        </div>
+
+        <div class="grid2" style="margin-top:11px;">
+          <div class="field">
+            <label>渠首条件</label>
+            <select id="fUpType">
+              <option value="none">未给定（自动假设）</option>
+              <option value="given_h">给定水深</option>
+            </select>
+          </div>
+          <div class="field"><label>渠首水深 (m)</label><input id="fUpH" type="number" step="0.01" value="0.30" disabled></div>
+        </div>
+        <div class="grid2" style="margin-top:9px;">
+          <div class="field">
+            <label>渠末条件</label>
+            <select id="fDownType">
+              <option value="free_outfall">自由跌水</option>
+              <option value="given_h">给定水深</option>
+            </select>
+          </div>
+          <div class="field"><label>渠末水深 (m)</label><input id="fDownH" type="number" step="0.01" value="2.00"></div>
+        </div>
+
+        <div class="grid2" style="margin-top:9px;">
+          <div class="field">
+            <label>预设算例</label>
+            <select id="fPreset"></select>
+          </div>
+          <div class="field"><label>跃长公式</label>
+            <select id="fJump"><option value="wu">吴持恭 L=6.9(h₂−h₁)</option>
+              <option value="elev">欧勒弗托斯基</option><option value="chen">陈椿庭</option></select>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="primary" id="calcBtn" style="flex:1;">计 算</button>
+          <button class="ghost" id="csvBtn">导出 CSV</button>
+        </div>
+        <div class="hint" id="formHint">参数已同步。</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">历史记录 <span class="tag">点击回放</span></div>
+      <div class="card-b hist" id="histBox"></div>
+    </section>
+
+  </aside>
+
+  <!-- ================= 右栏 ================= -->
+  <section class="right">
+
+    <div class="card">
+      <div class="card-h">纵剖面图 <span class="tag" id="profileTag">点击图中任意位置查看横断面</span></div>
+      <div class="chartbox" id="profileWrap">
+        <canvas id="profile"></canvas>
+        <div class="tip" id="profileTip"></div>
+      </div>
+      <div class="legend">
+        <span><i style="border-color:#2e6da4"></i>缓流段</span>
+        <span><i style="border-color:#c9741f"></i>急流段</span>
+        <span class="dash"><i style="border-color:#7d8b99"></i>正常水深线 h₀</span>
+        <span class="dash"><i style="border-color:#b23c4a"></i>临界水深线 h_c</span>
+        <span class="dash"><i style="border-color:#8b98a6"></i>渠底线</span>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-h">横断面图 <span class="tag" id="sectionTag">未选择位置</span></div>
+        <div class="chartbox" id="sectionWrap"><canvas id="section"></canvas></div>
+        <div class="card-b" style="padding-top:8px;">
+          <table class="props" id="propsTable"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">计算结果 <span class="tag" id="statusTag"></span></div>
+        <div class="card-b">
+          <div class="badges" id="badges"></div>
+          <div class="kv" id="kvBox"></div>
+          <div class="wlist" id="warnBox"></div>
+          <details class="mech" id="mechBox">
+            <summary>力学依据（判别过程）</summary>
+            <ol class="reasons" id="reasonList"></ol>
+          </details>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   计算内核：矩形/梯形断面、h0/hc/ic、十二型判别、分段求和法、
+   折线变坡节点衔接、水跃双向对撞、水跌、单参数反问题（简化）
+   ========================================================================= */
+const G = 9.81;
+
+function props(sec, h){
+  if(h <= 0) return {A:0,B:0,P:0,R:0,hbar:0,ybar:0};
+  const b = sec.b, m = Math.max(sec.m, 0);
+  let A, B, P, ybar;
+  if(sec.kind === "rect" || m < 1e-12){
+    A = b*h; B = b; P = b + 2*h; ybar = h/2;
+  }else{
+    A = (b + m*h)*h; B = b + 2*m*h; P = b + 2*h*Math.sqrt(1+m*m);
+    ybar = h*(3*b + 2*m*h)/(6*(b + m*h));
+  }
+  return {A, B, P, R: A/P, hbar: A/B, ybar};
+}
+function qcap(sec, n, i, h){
+  if(i <= 0 || h <= 0) return 0;
+  const p = props(sec, h);
+  if(p.A <= 0 || p.R <= 0) return 0;
+  return (1/n)*p.A*Math.pow(p.R, 2/3)*Math.sqrt(i);
+}
+function bisect(f, lo, hi, tol, maxit){
+  tol = tol || 1e-12; maxit = maxit || 220;
+  let flo = f(lo), fhi = f(hi);
+  if(flo === 0) return lo;
+  if(fhi === 0) return hi;
+  if(flo*fhi > 0) return NaN;
+  for(let k = 0; k < maxit; k++){
+    const mid = (lo+hi)/2, fm = f(mid);
+    if(fm === 0) return mid;
+    if(flo*fm < 0){ hi = mid; } else { lo = mid; flo = fm; }
+    if(Math.abs(hi-lo) <= tol*Math.max(1, Math.abs(mid))) break;
+  }
+  return (lo+hi)/2;
+}
+function normalDepth(sec, n, i, Q){
+  if(i <= 0 || Q <= 0) return null;
+  const f = h => qcap(sec, n, i, h) - Q;
+  let hi = Math.max(10*sec.b, 2);
+  for(let k = 0; k < 80; k++){
+    if(f(hi) >= 0) return bisect(f, 1e-10, hi);
+    hi *= 2;
+    if(hi > 1e7) return null;
+  }
+  return null;
+}
+function criticalDepth(sec, Q, alpha){
+  if(sec.kind === "rect" || sec.m < 1e-12){
+    const q = Q/sec.b;
+    return Math.pow(alpha*q*q/G, 1/3);
+  }
+  const f = h => alpha*Q*Q*props(sec,h).B/(G*Math.pow(props(sec,h).A,3)) - 1;
+  let hi = Math.max(10*sec.b, 2);
+  for(let k = 0; k < 80; k++){
+    if(f(hi) <= 0) return bisect(f, 1e-10, hi);
+    hi *= 2;
+  }
+  return NaN;
+}
+function criticalSlope(sec, n, Q, alpha){
+  const hc = criticalDepth(sec, Q, alpha), p = props(sec, hc);
+  return Q*Q*n*n/(p.A*p.A*Math.pow(p.R, 4/3));
+}
+function classifySlope(i, ic){
+  if(Math.abs(i) < 1e-12) return "horizontal";
+  if(i < 0) return "adverse";
+  if(Math.abs(i-ic) <= 1e-6*Math.max(ic,1e-12)) return "critical";
+  return i < ic ? "mild" : "steep";
+}
+const SLOPE_CN = {mild:"缓坡", steep:"陡坡", critical:"临界坡", horizontal:"平坡", adverse:"负坡"};
+const ZONE_CN = {1:"Ⅰ区", 2:"Ⅱ区", 3:"Ⅲ区"};
+const ZONE_TREND = {1:1, 2:-1, 3:1};
+
+function zoneOf(h, h0, hc, cls){
+  if(Math.abs(h-hc) <= 1e-9*Math.max(hc,1e-12)) return {zone:null, type:"临界", regime:"crit"};
+  if(cls === "mild"){
+    if(h > h0) return {zone:1, type:"M1", regime:"sub"};
+    if(h > hc) return {zone:2, type:"M2", regime:"sub"};
+    return {zone:3, type:"M3", regime:"sup"};
+  }
+  if(cls === "steep"){
+    if(h > hc) return {zone:1, type:"S1", regime:"sub"};
+    if(h > h0) return {zone:2, type:"S2", regime:"sup"};
+    return {zone:3, type:"S3", regime:"sup"};
+  }
+  if(cls === "critical"){
+    return h > hc ? {zone:1, type:"C1", regime:"sub"} : {zone:3, type:"C3", regime:"sup"};
+  }
+  if(cls === "horizontal"){
+    return h > hc ? {zone:2, type:"H2", regime:"sub"} : {zone:3, type:"H3", regime:"sup"};
+  }
+  return h > hc ? {zone:2, type:"A2", regime:"sub"} : {zone:3, type:"A3", regime:"sup"};
+}
+function Jr(sec, n, Q, h){
+  const p = props(sec, h);
+  if(p.A <= 0 || p.R <= 0) return Infinity;
+  const K = (1/n)*p.A*Math.pow(p.R, 2/3);
+  return Q*Q/(K*K);
+}
+function Fr2(sec, Q, alpha, h){
+  const p = props(sec, h);
+  if(p.A <= 0) return Infinity;
+  return alpha*Q*Q*p.B/(G*Math.pow(p.A,3));
+}
+function Es(sec, Q, alpha, h){
+  const p = props(sec, h);
+  if(p.A <= 0) return h;
+  return h + alpha*Q*Q/(2*G*p.A*p.A);
+}
+function dhds(sec, n, i, Q, alpha, h){
+  let den = 1 - Fr2(sec, Q, alpha, h);
+  if(Math.abs(den) < 1e-12) den = den >= 0 ? 1e-12 : -1e-12;
+  return (i - Jr(sec, n, Q, h))/den;
+}
+function thetaF(sec, Q, beta, h){
+  const p = props(sec, h);
+  if(p.A <= 0) return Infinity;
+  return beta*Q*Q/(G*p.A) + p.A*p.ybar;
+}
+function thetaMin(sec, Q, beta, alpha){
+  if(Math.abs(alpha-beta) < 1e-12) return criticalDepth(sec, Q, alpha);
+  const f = h => Fr2(sec, Q, alpha, h) - alpha/beta;
+  const hi = Math.max(10*criticalDepth(sec, Q, alpha), 10*sec.b, 10);
+  return bisect(f, 1e-10, hi);
+}
+function conjugate(sec, Q, beta, alpha, h1){
+  if(h1 <= 0) return null;
+  const hmin = thetaMin(sec, Q, beta, alpha);
+  const t1 = thetaF(sec, Q, beta, h1);
+  const f = h => thetaF(sec, Q, beta, h) - t1;
+  if(h1 < hmin){
+    let lo = hmin*(1+1e-12), hi = Math.max(50*hmin, 10*sec.b, 10);
+    for(let k = 0; k < 100; k++){
+      if(f(lo)*f(hi) <= 0) break;
+      hi *= 2;
+      if(hi > 1e8) return null;
+    }
+    const r = bisect(f, lo, hi);
+    return isNaN(r) ? null : r;
+  }
+  const r = bisect(f, 1e-10, hmin*(1-1e-12));
+  return isNaN(r) ? null : r;
+}
+function jumpType(Fr1){
+  if(Fr1 > 9)   return {code:"strong", cn:"强水跃"};
+  if(Fr1 > 4.5) return {code:"steady", cn:"稳定水跃"};
+  if(Fr1 > 2.5) return {code:"oscillating", cn:"摆动水跃"};
+  if(Fr1 > 1.7) return {code:"weak", cn:"弱水跃"};
+  return {code:"wavy", cn:"波状水跃"};
+}
+const JUMP_LEN = {
+  wu:   {name:"吴持恭 L=6.9(h₂−h₁)", fn:(h1,h2,Fr1)=>6.9*(h2-h1)},
+  elev: {name:"欧勒弗托斯基 L=6.9h₁(Fr₁−1)", fn:(h1,h2,Fr1)=>6.9*h1*Math.max(Fr1-1,0)},
+  chen: {name:"陈椿庭 L=9.4(Fr₁−1)h₁", fn:(h1,h2,Fr1)=>9.4*Math.max(Fr1-1,0)*h1}
+};
+
+/* ---------- 渠段派生量 ---------- */
+function buildInfos(p){
+  const infos = [];
+  let z = 0;
+  p.reaches.forEach((r, idx)=>{
+    const sec = {kind: Math.abs(r.m) < 1e-12 ? "rect" : "trap", b: r.b, m: r.m};
+    const h0 = normalDepth(sec, r.n, r.i, p.Q);
+    const hc = criticalDepth(sec, p.Q, p.alpha);
+    const ic = criticalSlope(sec, r.n, p.Q, p.alpha);
+    const pr = props(sec, hc);
+    infos.push({
+      idx, name: r.name || ("第"+(idx+1)+"段"),
+      x0: r.x0, x1: r.x1, i: r.i, b: r.b, m: r.m, n: r.n,
+      sec, h0, hc, ic, cls: classifySlope(r.i, ic),
+      z0: z, z1: z - r.i*(r.x1 - r.x0)
+    });
+    z = infos[infos.length-1].z1;
+  });
+  return infos;
+}
+function reachIndexAt(infos, x){
+  for(const f of infos){ if(x >= f.x0 - 1e-9 && x <= f.x1 + 1e-9) return f.idx; }
+  return x < infos[0].x0 ? 0 : infos.length-1;
+}
+function zbAt(infos, x){
+  const f = infos[reachIndexAt(infos, x)];
+  return f.z0 - f.i*(x - f.x0);
+}
+
+/* ---------- 分段求和法推进 ---------- */
+function marchReach(p, info, x0, hStart, dir){
+  const xs = [x0], hs = [hStart];
+  let x = x0, h = hStart;
+  const xLim = dir < 0 ? info.x0 : info.x1;
+  let reason = "max_steps";
+  for(let it = 0; it < 30000; it++){
+    const Fr = Math.sqrt(Math.max(Fr2(info.sec, p.Q, p.alpha, h), 0));
+    if(Math.abs(Fr - 1) < p.stopGap){ reason = "approach_hc"; break; }
+    if(info.h0 != null && Math.abs(h - info.h0)/info.h0 < p.tolNormal){ reason = "approach_h0"; break; }
+    const d = dhds(info.sec, info.n, info.i, p.Q, p.alpha, h);
+    if(Math.abs(d) < 1e-14){ reason = "uniform"; break; }
+    const dNear = info.h0 != null ? Math.abs(h - info.h0) : Math.abs(h);
+    let step = Math.max(0.01*Math.min(dNear, h), 1e-6);
+    const gapHc = Math.abs(h - info.hc);
+    if(gapHc > 1e-12) step = Math.min(step, 0.25*gapHc);
+    const sgn = (d*dir > 0) ? 1 : -1;
+    const hNext = h + sgn*step;
+    if(hNext <= 1e-9){ reason = "truncated"; break; }
+    const Es1 = Es(info.sec, p.Q, p.alpha, h);
+    const Es2 = Es(info.sec, p.Q, p.alpha, hNext);
+    const denom = info.i - 0.5*(Jr(info.sec, info.n, p.Q, h) + Jr(info.sec, info.n, p.Q, hNext));
+    if(Math.abs(denom) < 1e-14){ reason = "approach_h0"; break; }
+    const ds = (Es2 - Es1)/denom;
+    if(ds*dir <= 0){ reason = "cross"; break; }
+    const xNext = x + ds;
+    if((dir < 0 && xNext <= xLim) || (dir > 0 && xNext >= xLim)){
+      const t = Math.min(Math.max((xLim - x)/ds, 0), 1);
+      xs.push(xLim); hs.push(h + t*(hNext - h));
+      reason = "reach_end"; break;
+    }
+    x = xNext; h = hNext;
+    xs.push(x); hs.push(h);
+    if(xs.length > 9000){ reason = "max_steps"; break; }
+  }
+  return {xs, hs, reason};
+}
+function marchChain(p, infos, x0, hStart, dir){
+  const xs = [x0], hs = [hStart];
+  let idx = reachIndexAt(infos, x0), x = x0, h = hStart, reason = "max_steps";
+  for(let k = 0; k < infos.length + 2; k++){
+    if(idx < 0 || idx >= infos.length) break;
+    const info = infos[idx];
+    const r = marchReach(p, info, x, h, dir);
+    for(let j = 1; j < r.xs.length; j++){ xs.push(r.xs[j]); hs.push(r.hs[j]); }
+    x = xs[xs.length-1]; h = hs[hs.length-1];
+    const xLim = dir < 0 ? info.x0 : info.x1;
+    if(r.reason === "approach_hc"){
+      if(Math.abs(xLim - x) <= 0.15*(info.x1 - info.x0) && Math.abs(xLim - x) > 1e-9){
+        xs.push(xLim); hs.push(info.hc);
+      }
+      reason = "approach_hc"; break;
+    }
+    if(r.reason === "approach_h0" && info.h0 != null){
+      if(Math.abs(xLim - x) > 1e-9){ xs.push(xLim); hs.push(info.h0); x = xLim; h = info.h0; }
+      idx += dir < 0 ? -1 : 1;
+      if(idx < 0 || idx >= infos.length){ reason = "approach_h0"; break; }
+      continue;
+    }
+    if(r.reason !== "reach_end"){ reason = r.reason; break; }
+    idx += dir < 0 ? -1 : 1;
+    if(idx < 0 || idx >= infos.length){ reason = "reach_end"; break; }
+    const nxt = infos[idx];
+    if(dir > 0 && h >= nxt.hc){ reason = "regime_break"; break; }
+    if(dir < 0 && h <= nxt.hc){ reason = "regime_break"; break; }
+    reason = "reach_end";
+  }
+  return {xs, hs, reason};
+}
+
+/* ---------- 链条工具 ---------- */
+function minOf(a){ let m = Infinity; for(const v of a) if(v < m) m = v; return m; }
+function maxOf(a){ let m = -Infinity; for(const v of a) if(v > m) m = v; return m; }
+function sortPair(x, h){
+  const idx = x.map((v,i)=>i).sort((a,b)=>x[a]-x[b]);
+  return {x: idx.map(i=>x[i]), h: idx.map(i=>h[i])};
+}
+function interp(xa, ha, q){
+  if(q <= xa[0]) return ha[0];
+  if(q >= xa[xa.length-1]) return ha[ha.length-1];
+  let lo = 0, hi = xa.length-1;
+  while(hi - lo > 1){
+    const mid = (lo+hi) >> 1;
+    if(xa[mid] <= q) lo = mid; else hi = mid;
+  }
+  const t = (q - xa[lo])/(xa[hi] - xa[lo] || 1);
+  return ha[lo] + t*(ha[hi] - ha[lo]);
+}
+function trimChain(ch, xCut, keep){
+  const s = sortPair(ch.x, ch.h);
+  if(!s.x.length) return null;
+  if(xCut < s.x[0] - 1e-9 || xCut > s.x[s.x.length-1] + 1e-9) return Object.assign({}, ch);
+  const hCut = interp(s.x, s.h, xCut);
+  let xs, hs;
+  if(keep === "left"){
+    xs = []; hs = [];
+    for(let i = 0; i < s.x.length; i++) if(s.x[i] <= xCut){ xs.push(s.x[i]); hs.push(s.h[i]); }
+    if(!xs.length || xs[xs.length-1] < xCut - 1e-12){ xs.push(xCut); hs.push(hCut); }
+  }else{
+    xs = []; hs = [];
+    for(let i = 0; i < s.x.length; i++) if(s.x[i] >= xCut){ xs.push(s.x[i]); hs.push(s.h[i]); }
+    if(!xs.length || xs[0] > xCut + 1e-12){ xs.unshift(xCut); hs.unshift(hCut); }
+  }
+  if(xs.length < 2) return Object.assign({}, ch);
+  return Object.assign({}, ch, {x: xs, h: hs});
+}
+function cutOverlaps(chains){
+  let out = [];
+  for(const c of chains){
+    if(!c.x.length) continue;
+    const lo = minOf(c.x), hi = maxOf(c.x);
+    const kept = [];
+    for(const e of out){
+      const elo = minOf(e.x), ehi = maxOf(e.x);
+      if(ehi < lo - 1e-9 || elo > hi + 1e-9){ kept.push(e); continue; }
+      if(elo < lo - 1e-9){ const t = trimChain(e, lo, "left"); if(t) kept.push(t); }
+      if(ehi > hi + 1e-9){ const t = trimChain(e, hi, "right"); if(t) kept.push(t); }
+    }
+    kept.push(c);
+    out = kept;
+  }
+  return out;
+}
+function concatChains(list){
+  const X = [], H = [];
+  for(const c of list){
+    const s = sortPair(c.x, c.h);
+    for(let i = 0; i < s.x.length; i++){ X.push(s.x[i]); H.push(s.h[i]); }
+  }
+  const s = sortPair(X, H);
+  return {x: s.x, h: s.h};
+}
+
+/* ---------- 水跃定位 ---------- */
+function locateJump(p, infos, sup, sub, warnings){
+  if(!sup.length || !sub.length) return null;
+  const S = concatChains(sup), M = concatChains(sub);
+  const lo = Math.max(S.x[0], M.x[0]);
+  const hi = Math.min(S.x[S.x.length-1], M.x[M.x.length-1]);
+  if(hi - lo <= 1e-6) return null;
+
+  const resid = x => {
+    const hSub = interp(M.x, M.h, x);
+    const rid = reachIndexAt(infos, x);
+    const c = conjugate(infos[rid].sec, p.Q, p.beta, p.alpha, hSub);
+    if(c == null) return NaN;
+    return interp(S.x, S.h, x) - c;
+  };
+
+  const N = 240;
+  const grid = [], vals = [];
+  for(let i = 0; i < N; i++){
+    const x = hi + (lo - hi)*i/(N - 1);
+    grid.push(x); vals.push(resid(x));
+  }
+  let root = null;
+  for(let i = 0; i < N - 1; i++){
+    const f0 = vals[i], f1 = vals[i+1];
+    if(isNaN(f0) || isNaN(f1)) continue;
+    if(f0 === 0){ root = grid[i]; break; }
+    if(f0*f1 < 0){
+      let a = grid[i], b = grid[i+1];
+      for(let k = 0; k < 100; k++){
+        const m = (a+b)/2, fm = resid(m);
+        if(isNaN(fm) || Math.abs(b-a) < 1e-6) break;
+        if(fm*f0 < 0) b = m; else a = m;
+      }
+      root = (a+b)/2; break;
+    }
+  }
+
+  if(root == null){
+    const ridEnd = reachIndexAt(infos, hi);
+    const hcEnd = infos[ridEnd].hc;
+    let allSub = true;
+    for(const v of S.h) if(v <= hcEnd){ allSub = false; break; }
+    if(allSub) for(const v of M.h) if(v <= hcEnd){ allSub = false; break; }
+    if(allSub){
+      warnings.push({code:"W_OVER_CONSTRAINED", level:"warn",
+        message:"上下游控制均为缓流且相互矛盾：既无急流段，也无水跃可衔接。",
+        hint:"请检查上游给定水深或下游尾水是否合理。"});
+      return null;
+    }
+    const h1End = interp(S.x, S.h, hi);
+    const hTail = interp(M.x, M.h, hi);
+    const h2Req = conjugate(infos[ridEnd].sec, p.Q, p.beta, p.alpha, h1End);
+    if(h2Req != null && hTail < h2Req){
+      warnings.push({code:"W_JUMP_WASHED", level:"warn",
+        message:"水跃被冲出本渠段：尾水水深小于所需跃后共轭水深。", hint:"可延长渠段或抬高低游水位。"});
+      return {kind:"jump_washed", x:hi, reachIndex:ridEnd, data:{h1:h1End, h2req:h2Req, hTail}};
+    }
+    warnings.push({code:"W_JUMP_SUBMERGED", level:"warn",
+      message:"水跃被淹没或不产生：尾水水深大于跃后共轭水深。", hint:"属淹没式水跃。"});
+    return {kind:"jump_submerged", x:hi, reachIndex:ridEnd,
+      data:{h1:h1End, h2:h2Req, hTail}};
+  }
+
+  const rid = reachIndexAt(infos, root);
+  const sec = infos[rid].sec;
+  const h1 = interp(S.x, S.h, root);
+  const h2 = conjugate(sec, p.Q, p.beta, p.alpha, h1);
+  if(h2 == null) return null;
+  const Fr1 = Math.sqrt(Math.max(Fr2(sec, p.Q, p.alpha, h1), 0));
+  const jt = jumpType(Fr1);
+  const f = JUMP_LEN[p.jumpFormula] || JUMP_LEN.wu;
+  const Lj = Math.max(f.fn(h1, h2, Fr1), 0);
+  const p1 = props(sec, h1), p2 = props(sec, h2);
+  const v1 = p.Q/p1.A, v2 = p.Q/p2.A;
+  const E1 = h1 + p.alpha*v1*v1/(2*G);
+  const E2 = h2 + p.alpha*v2*v2/(2*G);
+  const rect = (sec.kind === "rect");
+  const dE = rect ? Math.pow(h2-h1,3)/(4*h1*h2) : Math.max(E1-E2, 0);
+  return {kind:"jump", x:root, reachIndex:rid,
+    data:{h1, h2, Fr1, jumpType:jt.cn, L: Lj, formula: f.name, dE, Kj: dE/E1,
+          note: rect ? "" : "梯形断面 ΔE 由断面比能差计算，属近似"}};
+}
+
+/* ---------- 装配 ---------- */
+function makeSeg(p, infos, rid, dir, xs, hs, src, reason){
+  const info = infos[rid];
+  const z = [], zw = [], es = [], fr = [], vv = [];
+  for(let i = 0; i < xs.length; i++){
+    const zb = info.z0 - info.i*(xs[i] - info.x0);
+    const pr = props(info.sec, hs[i]);
+    z.push(zb); zw.push(zb + hs[i]);
+    es.push(Es(info.sec, p.Q, p.alpha, hs[i]));
+    fr.push(Math.sqrt(Math.max(Fr2(info.sec, p.Q, p.alpha, hs[i]), 0)));
+    vv.push(pr.A > 0 ? p.Q/pr.A : 0);
+  }
+  const zt = zoneOf(hs[0], info.h0, info.hc, info.cls);
+  let len99 = null;
+  if(info.h0 != null && info.h0 > 0){
+    for(let i = 0; i < hs.length; i++){
+      if(Math.abs(hs[i]-info.h0)/info.h0 <= 0.01){ len99 = Math.abs(xs[i]-xs[0]); break; }
+    }
+  }
+  return {reachIndex: rid, type: zt.type, regime: zt.regime, zone: zt.zone,
+          dir, x: xs, h: hs, zb: z, zw, es, fr, v: vv, src, reason, len99};
+}
+function buildSegments(p, infos, chains){
+  const segs = [];
+  for(const ch of chains){
+    if(!ch.x.length) continue;
+    const s = sortPair(ch.x, ch.h);
+    let cur = [], curRid = null;
+    const flush = () => {
+      if(cur.length >= 2){
+        const xs = cur.map(o=>o.x), hs = cur.map(o=>o.h);
+        if(xs[xs.length-1] - xs[0] > 1e-12)
+          segs.push(makeSeg(p, infos, curRid, ch.dir, xs, hs, ch.src, ch.reason));
+      }
+    };
+    for(let i = 0; i < s.x.length; i++){
+      const o = {x: s.x[i], h: s.h[i]};
+      const rid = reachIndexAt(infos, o.x);
+      if(curRid === null){ curRid = rid; cur.push(o); continue; }
+      if(rid !== curRid){
+        cur.push(o); flush();
+        curRid = rid; cur = [o];
+      }else cur.push(o);
+    }
+    flush();
+  }
+  segs.sort((a,b)=> (minOf(a.x) - minOf(b.x)) || (a.dir - b.dir));
+  segs.forEach((s,i)=> s.id = i);
+  return segs;
+}
+
+/* ---------- 主求解 ---------- */
+function solve(p){
+  const infos = buildInfos(p);
+  const warnings = [], transitions = [], controls = [], chains = [];
+  const x0 = infos[0].x0, xL = infos[infos.length-1].x1;
+  const last = infos[infos.length-1];
+
+  /* 下游 */
+  let hDown = null;
+  if(p.down.type === "given_h") hDown = p.down.h;
+  else if(p.down.type === "free_outfall"){
+    if(last.cls !== "steep") hDown = last.hc;
+    else warnings.push({code:"W_OUTFALL_SUPERCRITICAL", level:"info",
+      message:"末段为陡坡，渠末自由跌水不构成控制（急流不受下游控制）。"});
+  }
+  if(hDown != null && hDown < last.hc*(1 - 1e-9)){
+    warnings.push({code:"W_DOWNSTREAM_SUPERCRITICAL", level:"warn",
+      message:"下游给定水深小于临界水深，该控制不能向上游传播。"});
+    hDown = null;
+  }
+  let covered = xL;
+  if(hDown != null){
+    const isCrit = Math.abs(hDown - last.hc)/last.hc <= 1e-6;
+    let hStart;
+    if(isCrit){
+      hStart = last.hc*(1 + 0.005);
+      controls.push({kind:"free_outfall", x:xL, h:last.hc, dir:-1, why:"渠末自由跌水，取临界水深"});
+      transitions.push({kind:"outfall", x:xL, reachIndex:last.idx, data:{hc:last.hc}});
+    }else{
+      hStart = hDown;
+      controls.push({kind:"downstream_h", x:xL, h:hDown, dir:-1, why:"下游给定水深，缓流向上游控制"});
+    }
+    const ch = marchChain(p, infos, xL, hStart, -1);
+    chains.push({dir:-1, x:ch.xs, h:ch.hs, src:"downstream", reason:ch.reason});
+    covered = minOf(ch.xs);
+  }
+
+  /* 上游 */
+  let needUp = covered > x0 + 1e-6;
+  if(!needUp && p.up.type === "given_h"){
+    let hIn = null;
+    for(const c of chains){
+      const s = sortPair(c.x, c.h);
+      if(s.x.length && s.x[0] - 1e-9 <= x0 && x0 <= s.x[s.x.length-1] + 1e-9){
+        hIn = interp(s.x, s.h, x0); break;
+      }
+    }
+    if(hIn != null && Math.abs(hIn - p.up.h) > Math.max(0.02*Math.abs(p.up.h), 1e-6)){
+      needUp = true;
+      warnings.push({code:"W_INLET_MISMATCH", level:"info",
+        message:"下游回水推至渠首的水深 "+hIn.toFixed(3)+" m 与上游给定 "+p.up.h.toFixed(3)+" m 不符。",
+        hint:"改按上游控制向下游推算，由水跃完成衔接。"});
+    }
+  }
+  if(needUp){
+    let ax = null, ah = null, asrc = "";
+    if(p.up.type === "given_h"){ ax = x0; ah = p.up.h; asrc = "upstream"; }
+    else{
+      for(const f of infos){
+        if(f.idx < infos.length-1 && infos[f.idx+1].cls === "steep" && f.cls !== "steep"
+           && f.x1 > x0 && f.x1 <= covered + 1e-9){
+          ax = f.x1; ah = infos[f.idx+1].hc; asrc = "critical"; break;
+        }
+      }
+    }
+    if(ax == null){
+      const first = infos[0];
+      if(first.cls === "steep"){ ax = x0; ah = first.hc*0.995; asrc = "critical";
+        warnings.push({code:"W_ASSUMED_CRITICAL_INLET", level:"warn",
+          message:"上游未给定条件且首段为陡坡，按渠首临界水深假设。"}); }
+      else if(first.h0 != null){ ax = x0; ah = first.h0; asrc = "upstream";
+        warnings.push({code:"W_ASSUMED_NORMAL_INLET", level:"warn",
+          message:"上游未给定条件，按首段正常水深假设。"}); }
+      else { ax = x0; ah = first.hc*1.005; asrc = "critical"; }
+    }
+    if(asrc === "critical"){
+      transitions.push({kind:"critical", x:ax, reachIndex:reachIndexAt(infos, ax),
+        data:{hc:ah}, note:"坡折或渠首临界，取临界水深作双侧控制"});
+      controls.push({kind:"critical", x:ax, h:ah, dir:0, why:"临界控制，双向推算"});
+      const u = marchChain(p, infos, ax, ah*1.005, -1);
+      chains.push({dir:-1, x:u.xs, h:u.hs, src:"critical_up", reason:u.reason});
+      const d = marchChain(p, infos, ax, ah*0.995, +1);
+      chains.push({dir:+1, x:d.xs, h:d.hs, src:"critical_down", reason:d.reason});
+    }else{
+      controls.push({kind:"upstream_h", x:ax, h:ah, dir:+1, why:"上游给定水深"});
+      const d = marchChain(p, infos, ax, ah, +1);
+      chains.push({dir:+1, x:d.xs, h:d.hs, src:"upstream", reason:d.reason});
+    }
+  }
+
+  /* 水跃 */
+  const sup = chains.filter(c=>c.dir > 0), sub = chains.filter(c=>c.dir < 0);
+  const tr = locateJump(p, infos, sup, sub, warnings);
+  let finalChains = chains;
+  if(tr){
+    transitions.push(tr);
+    if(tr.kind === "jump"){
+      const out = [];
+      for(const c of sup){ const t = trimChain(c, tr.x, "left"); if(t) out.push(t); }
+      for(const c of sub){ const t = trimChain(c, tr.x, "right"); if(t) out.push(t); }
+      finalChains = out;
+    }
+  }
+
+  finalChains = cutOverlaps(finalChains);
+  const segments = buildSegments(p, infos, finalChains);
+
+  /* 物理自检：总水头单调 */
+  for(const s of segments){
+    if(s.x.length < 3) continue;
+    let maxRise = 0, prev = null;
+    for(let i = 0; i < s.x.length; i++){
+      const E = s.zw[i] + p.alpha*s.v[i]*s.v[i]/(2*G);
+      if(prev != null && E - prev > maxRise) maxRise = E - prev;
+      prev = E;
+    }
+    if(maxRise > 1e-3){
+      warnings.push({code:"E_HEAD_INCREASE", level:"error",
+        message:s.type+" 段总水头沿程回升 " + maxRise.toFixed(4) + " m。"});
+    }
+  }
+
+  /* 事实包 */
+  const reasons = [];
+  for(const f of infos){
+    reasons.push("第"+(f.idx+1)+"段：i = "+f.i.toFixed(5)+"，i_c = "+f.ic.toFixed(5)+" → "+
+      SLOPE_CN[f.cls]+"（"+(f.cls==="mild"?"i < i_c":"i > i_c")+"）");
+    if(f.h0 == null) reasons.push("第"+(f.idx+1)+"段：平坡或负坡，无正常水深，Ⅰ区不存在");
+    else reasons.push("第"+(f.idx+1)+"段：h₀ = "+f.h0.toFixed(3)+" m，h_c = "+f.hc.toFixed(3)+" m");
+  }
+  for(const s of segments){
+    if(s.zone){
+      reasons.push(s.type+"：h 位于"+ZONE_CN[s.zone]+"，Fr "+(s.regime==="sub"?"< 1（缓流）":"> 1（急流）")+
+        "，故"+(s.dir > 0 ? "自上游向下游" : "自下游向上游")+"推算");
+    }
+  }
+
+  let maxH = 0, maxZw = null, maxZwX = null;
+  for(const s of segments){
+    for(let i = 0; i < s.h.length; i++){
+      if(s.h[i] > maxH) maxH = s.h[i];
+      if(maxZw == null || s.zw[i] > maxZw){ maxZw = s.zw[i]; maxZwX = s.x[i]; }
+    }
+  }
+  const jump = transitions.find(t=>t.kind === "jump") || null;
+
+  return {status: segments.length ? "ok" : "no_solution",
+    infos, segments, transitions, controls, warnings, reasons,
+    facts:{ maxH, maxZw, maxZwX, jump,
+      jumps: transitions.filter(t=>t.kind.indexOf("jump") === 0) },
+    x0, xL};
+}
+
+/* =========================================================================
+   界面状态
+   ========================================================================= */
+const state = {
+  params: null, result: null, mode: "teaching",
+  selectedX: null, hover: null, history: []
+};
+
+function P(){
+  return {Q:10, alpha:1.0, beta:1.0, stopGap:1e-3, tolNormal:0.005, jumpFormula:"wu",
+    reaches:[{x0:0, x1:600, i:0.001, b:5, m:0, n:0.015}],
+    up:{type:"none", h:null}, down:{type:"free_outfall", h:null}};
+}
+const PRESETS = [
+  {key:"M1", name:"M1 壅水 · 缓坡+高尾水", mk:()=>{const p=P(); p.down={type:"given_h",h:2.0}; return p;}},
+  {key:"M2", name:"M2 降水 · 缓坡+渠末跌水", mk:()=>{const p=P(); return p;}},
+  {key:"S2", name:"S2 降水 · 陡坡+渠首急流", mk:()=>{
+    const p=P(); p.reaches=[{x0:0,x1:420,i:0.02,b:5,m:0,n:0.015}];
+    p.up={type:"given_h",h:0.55}; p.down={type:"free_outfall"}; return p;}},
+  {key:"MS", name:"缓坡转陡坡 · M2｜临界｜S2", mk:()=>{
+    const p=P(); p.reaches=[{x0:0,x1:300,i:0.001,b:5,m:0,n:0.015},
+                            {x0:300,x1:600,i:0.02,b:5,m:0,n:0.015}];
+    p.down={type:"free_outfall"}; return p;}},
+  {key:"SM", name:"陡坡转缓坡 · 含水跃", mk:()=>{
+    const p=P(); p.reaches=[{x0:0,x1:100,i:0.05,b:5,m:0,n:0.015},
+                            {x0:100,x1:600,i:0.001,b:5,m:0,n:0.015}];
+    p.up={type:"given_h",h:0.30}; p.down={type:"given_h",h:1.00}; return p;}},
+  {key:"TZ", name:"梯形断面 · M1 壅水", mk:()=>{
+    const p=P(); p.Q=12; p.reaches=[{x0:0,x1:800,i:0.0008,b:6,m:1.5,n:0.022}];
+    p.down={type:"given_h",h:2.2}; return p;}}
+];
+const N_ENG = [
+  [0.012,"光滑水泥砂浆抹面"], [0.014,"混凝土衬砌（较光滑）"], [0.016,"一般混凝土衬砌"],
+  [0.018,"浆砌块石（较平整）"], [0.022,"平整土渠"], [0.026,"一般土渠/砾石渠床"],
+  [0.032,"有杂草土渠/干砌块石"], [0.035,"天然河道（弯曲）"], [0.045,"山区卵石河道"],
+  [0.060,"密林/洪泛滩地"]
+];
+const N_TEACH = [[0.05,"教学：偏高"],[0.10,"教学：夸张"],[0.15,"教学：夸张"],
+                 [0.20,"教学：夸张"],[0.30,"教学：夸张"]];
+
+const $ = s => document.querySelector(s);
+const f2 = (v,d) => (v==null||isNaN(v)) ? "—" : v.toFixed(d==null?3:d);
+
+/* ---------------- 表单渲染 ---------------- */
+function renderReaches(){
+  const tb = $("#reachTable");
+  const rows = state.params.reaches;
+  let html = "<thead><tr><th>起点 x</th><th>终点 x</th><th>底坡 i</th><th>底宽 b</th><th>边坡 m</th><th>糙率 n</th></tr></thead><tbody>";
+  rows.forEach((r,i)=>{
+    html += "<tr>"+
+      ["x0","x1","i","b","m","n"].map(k=>
+        '<td><input data-i="'+i+'" data-k="'+k+'" type="number" step="0.0001" value="'+r[k]+'"></td>'
+      ).join("") + "</tr>";
+  });
+  html += "</tbody>";
+  tb.innerHTML = html;
+  tb.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input", ()=>{
+      const i = +inp.dataset.i, k = inp.dataset.k;
+      const v = parseFloat(inp.value);
+      state.params.reaches[i][k] = isNaN(v) ? 0 : v;
+      if(k === "m"){ /* 断面类型随 m 变化 */ }
+      markDirty();
+    });
+  });
+  renderNList();
+}
+function renderNList(){
+  let dl = document.getElementById("nlist");
+  if(!dl){ dl = document.createElement("datalist"); dl.id = "nlist"; document.body.appendChild(dl); }
+  const list = state.mode === "teaching" ? N_ENG.concat(N_TEACH) : N_ENG;
+  dl.innerHTML = list.map(([v,t])=>'<option value="'+v+'">'+t+'</option>').join("");
+}
+function syncForm(){
+  const p = state.params;
+  $("#fQ").value = p.Q;
+  $("#fAlpha").value = p.alpha.toFixed(2)+" / "+p.beta.toFixed(2);
+  $("#fUpType").value = p.up.type;
+  $("#fUpH").value = p.up.h == null ? "" : p.up.h;
+  $("#fUpH").disabled = p.up.type !== "given_h";
+  $("#fDownType").value = p.down.type;
+  $("#fDownH").value = p.down.h == null ? "" : p.down.h;
+  $("#fDownH").disabled = p.down.type !== "given_h";
+  renderReaches();
+}
+function markDirty(){
+  $("#formHint").textContent = "参数已修改，点击「计算」更新结果。";
+  $("#formHint").className = "hint warn";
+}
+
+/* ---------------- 计算与渲染 ---------------- */
+function computeAndRender(name){
+  $("#formHint").textContent = "参数已同步。";
+  $("#formHint").className = "hint";
+  try{
+    const res = solve(state.params);
+    state.result = res;
+    if(state.selectedX == null || state.selectedX < res.x0 || state.selectedX > res.xL)
+      state.selectedX = res.x0 + 0.55*(res.xL - res.x0);
+    drawProfile();
+    drawSection();
+    renderResult();
+    pushHistory(name || currentCaseName());
+  }catch(e){
+    $("#formHint").textContent = "计算失败：" + e.message;
+    $("#formHint").className = "hint warn";
+    console.error(e);
+  }
+}
+function currentCaseName(){
+  const p = state.params;
+  const n = p.reaches.length;
+  return (n === 1 ? "单坡" : n + "段变坡") + " · Q=" + p.Q + " · i=" + p.reaches[0].i;
+}
+
+/* ---------------- 纵剖面图 ---------------- */
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  const w = Math.max(rect.width, 10), h = Math.max(rect.height, 10);
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return {ctx, w, h};
+}
+function niceTicks(min, max, n){
+  const span = max - min;
+  if(!(span > 0)) return [min];
+  const raw = span/n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw/mag;
+  let step = norm < 1.5 ? mag : norm < 3 ? 2*mag : norm < 7 ? 5*mag : 10*mag;
+  const out = [];
+  for(let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step)
+    out.push(+v.toFixed(10));
+  return out;
+}
+function profileGeom(){
+  const cv = $("#profile");
+  const {ctx, w, h} = setupCanvas(cv);
+  const res = state.result, p = state.params;
+  const pad = {l:62, r:18, t:16, b:36};
+  let yMin = Infinity, yMax = -Infinity;
+  for(const f of res.infos){
+    yMin = Math.min(yMin, f.z0, f.z1);
+    yMax = Math.max(yMax, f.z0, f.z1);
+    if(f.h0 != null){ yMax = Math.max(yMax, f.z0 + f.h0, f.z1 + f.h0); }
+    yMax = Math.max(yMax, f.z0 + f.hc, f.z1 + f.hc);
+  }
+  for(const s of res.segments){
+    for(let i = 0; i < s.zw.length; i++){ yMax = Math.max(yMax, s.zw[i]); yMin = Math.min(yMin, s.zb[i]); }
+  }
+  const spanY = Math.max(yMax - yMin, 0.5);
+  yMin -= spanY*0.06; yMax += spanY*0.12;
+  const X = x => pad.l + (x - res.x0)/(res.xL - res.x0)*(w - pad.l - pad.r);
+  const Y = z => h - pad.b - (z - yMin)/(yMax - yMin)*(h - pad.t - pad.b);
+  return {ctx, w, h, pad, X, Y, yMin, yMax, res, p};
+}
+function drawProfile(){
+  if(!state.result) return;
+  const g = profileGeom();
+  const {ctx, w, h, pad, X, Y, res, p} = g;
+  ctx.clearRect(0, 0, w, h);
+
+  /* 网格 */
+  ctx.strokeStyle = "#eef1f5"; ctx.lineWidth = 1;
+  const yT = niceTicks(g.yMin, g.yMax, 5);
+  ctx.font = "11px -apple-system,Segoe UI,sans-serif";
+  ctx.fillStyle = "#8b98a6"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  yT.forEach(z=>{
+    const y = Y(z);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+    ctx.fillText(z.toFixed(1), pad.l-8, y);
+  });
+  const xT = niceTicks(res.x0, res.xL, 6);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  xT.forEach(x=>{
+    const px = X(x);
+    ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, h-pad.b); ctx.stroke();
+    ctx.fillText(String(Math.round(x)), px, h-pad.b+7);
+  });
+  ctx.textAlign = "center"; ctx.fillStyle = "#5b6b7b"; ctx.font = "12px -apple-system,Segoe UI,sans-serif";
+  ctx.fillText("里程 x (m)", (pad.l + w-pad.r)/2, h-16);
+  ctx.save(); ctx.translate(15, (pad.t + h-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText("高程 z (m)", 0, 0); ctx.restore();
+
+  /* Ⅱ区淡蓝底 */
+  if(state.mode === "teaching"){
+    ctx.fillStyle = "rgba(46,109,164,0.055)";
+    for(const f of res.infos){
+      if(f.h0 == null) continue;
+      const x1 = X(f.x0), x2 = X(f.x1);
+      const yTop = Y(f.z0 + f.h0), yBot = Y(f.z0 + f.hc);
+      ctx.beginPath(); ctx.moveTo(x1, yTop); ctx.lineTo(x2, Y(f.z1 + f.h0));
+      ctx.lineTo(x2, Y(f.z1 + f.hc)); ctx.lineTo(x1, yBot); ctx.closePath(); ctx.fill();
+    }
+  }
+
+  /* 渠底以下填土色 */
+  ctx.beginPath();
+  ctx.moveTo(X(res.info0x0 || res.infos[0].x0), Y(res.infos[0].z0));
+  for(const f of res.infos) ctx.lineTo(X(f.x1), Y(f.z1));
+  ctx.lineTo(X(res.xL), h-pad.b); ctx.lineTo(X(res.x0), h-pad.b); ctx.closePath();
+  ctx.fillStyle = "#f2f4f6"; ctx.fill();
+
+  /* 渠底线 */
+  ctx.beginPath();
+  ctx.moveTo(X(res.infos[0].x0), Y(res.infos[0].z0));
+  for(const f of res.infos) ctx.lineTo(X(f.x1), Y(f.z1));
+  ctx.strokeStyle = "#6b7a88"; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.stroke();
+
+  /* h0 / hc 逐段虚折线 */
+  const stepLine = (key, color) => {
+    ctx.save();
+    ctx.setLineDash([5,4]); ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+    for(const f of res.infos){
+      const v = f[key];
+      if(v == null) continue;
+      ctx.beginPath();
+      ctx.moveTo(X(f.x0), Y(f.z0 + v));
+      ctx.lineTo(X(f.x1), Y(f.z1 + v));
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  stepLine("h0", "#7d8b99");
+  stepLine("hc", "#b23c4a");
+
+  /* 水面线 */
+  for(const s of res.segments){
+    ctx.beginPath();
+    for(let i = 0; i < s.x.length; i++){
+      const px = X(s.x[i]), py = Y(s.zw[i]);
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.strokeStyle = s.regime === "sub" ? "#2e6da4" : (s.regime === "sup" ? "#c9741f" : "#b23c4a");
+    ctx.lineWidth = 2.6; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.stroke();
+    /* 型号标注 */
+    const mi = Math.floor(s.x.length*0.5);
+    if(s.x.length > 4 && s.type !== "临界"){
+      ctx.fillStyle = s.regime === "sub" ? "#2e6da4" : "#c9741f";
+      ctx.font = "600 11.5px -apple-system,Segoe UI,sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText(s.type, X(s.x[mi]), Y(s.zw[mi]) - 6);
+    }
+  }
+
+  /* 衔接事件 */
+  for(const t of res.transitions){
+    const zb = zbAt(res.infos, t.x);
+    if(t.kind === "jump"){
+      const y1 = Y(zb + t.data.h1), y2 = Y(zb + t.data.h2);
+      ctx.save();
+      ctx.setLineDash([4,3]); ctx.strokeStyle = "#b23c4a"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(X(t.x), y1); ctx.lineTo(X(t.x), y2); ctx.stroke();
+      ctx.restore();
+      /* 锯齿符号 */
+      const px = X(t.x);
+      ctx.strokeStyle = "#b23c4a"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      const yTop = Math.min(y1, y2), yBot = Math.max(y1, y2);
+      const seg = 5, nz = Math.max(3, Math.round((yBot - yTop)/7));
+      ctx.moveTo(px - 6, yBot);
+      for(let i = 0; i <= nz; i++){
+        const yy = yBot + (yTop - yBot)*i/nz;
+        ctx.lineTo(px + (i%2 ? 6 : -6), yy);
+      }
+      ctx.stroke();
+      ctx.fillStyle = "#b23c4a"; ctx.font = "600 11.5px -apple-system,Segoe UI,sans-serif";
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText("水跃 h₁→h₂", px + 10, (yTop + yBot)/2);
+    }
+    if(t.kind === "outfall"){
+      ctx.save();
+      ctx.setLineDash([4,3]); ctx.strokeStyle = "#5b6b7b"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(X(t.x), Y(zb + t.data.hc)); ctx.lineTo(X(t.x), Y(zb)); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "#5b6b7b"; ctx.font = "600 11px -apple-system,Segoe UI,sans-serif";
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText("水跌", X(t.x) - 6, Y(zb + t.data.hc*0.5));
+    }
+    if(t.kind === "critical"){
+      ctx.beginPath();
+      ctx.arc(X(t.x), Y(zb + t.data.hc), 4, 0, Math.PI*2);
+      ctx.fillStyle = "#b23c4a"; ctx.fill();
+      ctx.fillStyle = "#b23c4a"; ctx.font = "600 11px -apple-system,Segoe UI,sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillText("临界", X(t.x), Y(zb + t.data.hc) + 7);
+    }
+  }
+
+  /* 选中位置竖线 */
+  if(state.selectedX != null){
+    const px = X(state.selectedX);
+    ctx.save();
+    ctx.setLineDash([2,3]); ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, h-pad.b); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(px, Y(zbAt(res.infos, state.selectedX) + waterAt(state.selectedX)), 4, 0, Math.PI*2);
+    ctx.fillStyle = "#1f4e79"; ctx.fill();
+  }
+
+  /* 悬停十字 */
+  if(state.hover != null){
+    const px = X(state.hover);
+    ctx.save();
+    ctx.strokeStyle = "rgba(31,78,121,.35)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, h-pad.b); ctx.stroke();
+    ctx.restore();
+  }
+  g.geom = g;
+  $("#profile")._geom = g;
+}
+function waterAt(x){
+  const res = state.result;
+  for(const s of res.segments){
+    const lo = minOf(s.x), hi = maxOf(s.x);
+    if(x >= lo - 1e-6 && x <= hi + 1e-6){
+      const sp = sortPair(s.x, s.h);
+      return interp(sp.x, sp.h, x);
+    }
+  }
+  return 0;
+}
+
+/* ---------------- 横断面图 ---------------- */
+function sectionData(x){
+  const res = state.result, p = state.params;
+  const rid = reachIndexAt(res.infos, x);
+  const f = res.infos[rid];
+  const h = waterAt(x);
+  const pr = props(f.sec, h);
+  const zt = zoneOf(h, f.h0, f.hc, f.cls);
+  const Fr = Math.sqrt(Math.max(Fr2(f.sec, p.Q, p.alpha, h), 0));
+  let inJump = false, jh1 = null, jh2 = null;
+  for(const t of res.transitions){
+    if(t.kind === "jump" && x >= t.x - 1e-6 && x <= t.x + t.data.L){
+      inJump = true; jh1 = t.data.h1; jh2 = t.data.h2; break;
+    }
+  }
+  return {f, h, pr, zt, Fr, zb: zbAt(res.infos, x), inJump, jh1, jh2};
+}
+function drawSection(){
+  const cv = $("#section");
+  const {ctx, w, h: H} = setupCanvas(cv);
+  ctx.clearRect(0, 0, w, H);
+  if(state.selectedX == null) return;
+  const d = sectionData(state.selectedX);
+  const f = d.f, b = f.b, m = Math.max(f.m, 0);
+
+  const hRef = Math.max(d.h, f.hc, f.h0 || 0, 0.4)*1.25;
+  const halfTop = b/2 + m*hRef;
+  const pad = {l:38, r:16, t:16, b:26};
+  const X = xx => pad.l + (xx + halfTop*1.08)/(2*halfTop*1.08)*(w - pad.l - pad.r);
+  const Y = yy => H - pad.b - yy/(hRef*1.06)*(H - pad.t - pad.b);
+
+  /* 地面/渠身 */
+  ctx.beginPath();
+  ctx.moveTo(X(-halfTop*1.08), H - pad.b);
+  ctx.lineTo(X(-halfTop), H - pad.b);
+  ctx.lineTo(X(-b/2), Y(0));
+  ctx.lineTo(X(b/2), Y(0));
+  ctx.lineTo(X(halfTop), H - pad.b);
+  ctx.lineTo(X(halfTop*1.08), H - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = "#f2f4f6"; ctx.fill();
+  ctx.strokeStyle = "#6b7a88"; ctx.lineWidth = 2; ctx.stroke();
+
+  /* 水体 */
+  const halfW = b/2 + m*d.h;
+  ctx.beginPath();
+  ctx.moveTo(X(-halfW), Y(0));
+  ctx.lineTo(X(halfW), Y(0));
+  ctx.lineTo(X(halfW), Y(d.h));
+  ctx.lineTo(X(-halfW), Y(d.h));
+  ctx.closePath();
+  ctx.fillStyle = d.zt.regime === "sup" ? "rgba(201,116,31,.18)" : "rgba(46,109,164,.18)";
+  ctx.fill();
+  ctx.strokeStyle = d.zt.regime === "sup" ? "#c9741f" : "#2e6da4";
+  ctx.lineWidth = 2.2; ctx.stroke();
+
+  /* h0 / hc 参考线 */
+  const refLine = (v, color, label) => {
+    if(v == null) return;
+    const y = Y(v);
+    ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(X(-halfTop*1.02), y); ctx.lineTo(X(halfTop*1.02), y); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = color; ctx.font = "10.5px -apple-system,Segoe UI,sans-serif";
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(label + " " + v.toFixed(2), X(halfTop*1.02) - 2, y - 2);
+  };
+  refLine(f.h0, "#7d8b99", "h₀");
+  refLine(f.hc, "#b23c4a", "h_c");
+
+  /* 水深标注 */
+  const xd = X(-halfW) - 10;
+  ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(xd, Y(0)); ctx.lineTo(xd, Y(d.h)); ctx.stroke();
+  [[Y(0), 1], [Y(d.h), -1]].forEach(([yy, s])=>{
+    ctx.beginPath(); ctx.moveTo(xd, yy); ctx.lineTo(xd - 4, yy + 6*s); ctx.lineTo(xd + 4, yy + 6*s);
+    ctx.closePath(); ctx.fillStyle = "#1f4e79"; ctx.fill();
+  });
+  ctx.save(); ctx.translate(xd - 8, (Y(0) + Y(d.h))/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = "#1f4e79"; ctx.font = "600 11px -apple-system,Segoe UI,sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.fillText("h = " + d.h.toFixed(3) + " m", 0, 0);
+  ctx.restore();
+
+  /* 水面宽 B */
+  ctx.strokeStyle = "#2e6da4"; ctx.lineWidth = 1;
+  const yB = Y(d.h) - 8;
+  ctx.beginPath(); ctx.moveTo(X(-halfW), yB); ctx.lineTo(X(halfW), yB); ctx.stroke();
+  ctx.fillStyle = "#2e6da4"; ctx.font = "11px -apple-system,Segoe UI,sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.fillText("B = " + d.pr.B.toFixed(2) + " m", X(0), yB - 3);
+
+  /* 水跃区间提示 */
+  if(d.inJump){
+    ctx.fillStyle = "#b23c4a"; ctx.font = "600 11.5px -apple-system,Segoe UI,sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("水跃区内水面不连续 h₁=" + f2(d.jh1,2) + " m，h₂=" + f2(d.jh2,2) + " m", X(0), 2);
+  }
+
+  /* 断面要素表 */
+  const rows = [
+    ["过水面积 A", d.pr.A.toFixed(2)+" m²"], ["水面宽 B", d.pr.B.toFixed(2)+" m"],
+    ["湿周 P", d.pr.P.toFixed(2)+" m"], ["水力半径 R", d.pr.R.toFixed(3)+" m"],
+    ["流速 v", (d.pr.A > 0 ? state.params.Q/d.pr.A : 0).toFixed(3)+" m/s"],
+    ["弗劳德数 Fr", d.Fr.toFixed(3)],
+    ["断面比能 E_s", Es(f.sec, state.params.Q, state.params.alpha, d.h).toFixed(3)+" m"],
+    ["形心水深 ȳ", d.pr.ybar.toFixed(3)+" m"],
+    ["渠底高程 z_b", d.zb.toFixed(3)+" m"]
+  ];
+  $("#propsTable").innerHTML = rows.map(r=>"<tr><td>"+r[0]+"</td><td>"+r[1]+"</td></tr>").join("");
+  $("#sectionTag").textContent = "x = " + d.x !== undefined ? "" : "";
+  $("#sectionTag").textContent = "x = " + state.selectedX.toFixed(1) + " m · " + d.zt.type +
+    " · " + (d.zt.regime === "sub" ? "缓流" : d.zt.regime === "sup" ? "急流" : "临界");
+}
+
+/* ---------------- 结果卡 ---------------- */
+function renderResult(){
+  const res = state.result, p = state.params;
+  $("#statusTag").textContent = (res.status === "ok" ? "计算完成" : "无解") +
+    " · " + res.segments.length + " 段曲线 / " + res.transitions.length + " 个衔接事件";
+
+  /* 型序徽章 */
+  const items = [];
+  res.segments.forEach(s=>items.push({x: minOf(s.x), el: s.type, cls: s.regime === "sup" ? "sup" : "sub"}));
+  res.transitions.forEach(t=>{
+    const label = t.kind === "jump" ? "水跃" : t.kind === "critical" ? "临界" :
+                  t.kind === "outfall" ? "水跌" : t.kind === "jump_submerged" ? "淹没水跃" : "跃出渠";
+    items.push({x: t.x, el: label, cls: "junc"});
+  });
+  items.sort((a,b)=>a.x-b.x);
+  $("#badges").innerHTML = items.map((it,i)=>
+    '<span class="badge ' + it.cls + '">' + it.el + '</span>' +
+    (i < items.length-1 ? '<span class="arrow">→</span>' : "")
+  ).join("") || '<span style="color:#8b98a6;font-size:12.5px">无曲线</span>';
+
+  /* 关键数字 */
+  const f0 = res.infos[0];
+  const jump = res.facts.jump;
+  const kv = [
+    ["流量 Q", p.Q.toFixed(2) + " m³/s"],
+    ["α / β", p.alpha.toFixed(2) + " / " + p.beta.toFixed(2)],
+    ["正常水深 h₀", f0.h0 == null ? "不存在" : f0.h0.toFixed(3) + " m"],
+    ["临界水深 h_c", f0.hc.toFixed(3) + " m"],
+    ["临界底坡 i_c", f0.ic.toFixed(5)],
+    ["最高水位", res.facts.maxZw == null ? "—" : res.facts.maxZw.toFixed(3) + " m"],
+    ["最高水位位置", res.facts.maxZwX == null ? "—" : res.facts.maxZwX.toFixed(0) + " m"],
+    ["最大水深", res.facts.maxH.toFixed(3) + " m"]
+  ];
+  if(jump){
+    kv.push(["水跃位置", jump.x.toFixed(1) + " m"]);
+    kv.push(["跃前/跃后水深", jump.data.h1.toFixed(3) + " / " + jump.data.h2.toFixed(3) + " m"]);
+    kv.push(["跃前 Fr₁", jump.data.Fr1.toFixed(2) + "（" + jump.data.jumpType + "）"]);
+    kv.push(["跃长 L_j", jump.data.L.toFixed(2) + " m"]);
+    kv.push(["消能系数 K_j", jump.data.Kj.toFixed(3)]);
+  }
+  $("#kvBox").innerHTML = kv.map(r=>"<div><span>"+r[0]+"</span><span>"+r[1]+"</span></div>").join("");
+
+  /* 提示 */
+  const ws = res.warnings.filter(w=>w.level !== "info");
+  $("#warnBox").innerHTML = ws.map(w=>'<div class="witem">'+w.message+(w.hint?" "+w.hint:"")+'</div>').join("");
+
+  /* 力学依据 */
+  $("#reasonList").innerHTML = res.reasons.map(r=>"<li>"+r+"</li>").join("");
+}
+
+/* ---------------- 历史 ---------------- */
+function pushHistory(name){
+  const p = state.params;
+  const now = new Date();
+  const t = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+  state.history.unshift({name, t, params: JSON.parse(JSON.stringify(p))});
+  if(state.history.length > 12) state.history.pop();
+  renderHistory();
+}
+function renderHistory(){
+  const box = $("#histBox");
+  if(!state.history.length){ box.innerHTML = '<div class="empty">暂无记录。</div>'; return; }
+  box.innerHTML = state.history.map((h,i)=>
+    '<div class="hitem" data-i="'+i+'"><span class="t">'+h.t+'</span><span class="n">'+h.name+'</span></div>'
+  ).join("");
+  box.querySelectorAll(".hitem").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const h = state.history[+el.dataset.i];
+      state.params = JSON.parse(JSON.stringify(h.params));
+      syncForm();
+      computeAndRender(h.name);
+    });
+  });
+}
+
+/* ---------------- 交互绑定 ---------------- */
+function bindForm(){
+  $("#fQ").addEventListener("input", e=>{ state.params.Q = parseFloat(e.target.value) || 0; markDirty(); });
+  $("#fPreset").addEventListener("change", e=>{
+    const pr = PRESETS.find(x=>x.key === e.target.value);
+    if(!pr) return;
+    state.params = pr.mk();
+    state.params.alpha = state.mode === "teaching" ? 1.0 : 1.05;
+    state.params.beta = state.params.alpha;
+    syncForm();
+    computeAndRender("预设：" + pr.name);
+  });
+  $("#fUpType").addEventListener("change", e=>{
+    state.params.up.type = e.target.value;
+    $("#fUpH").disabled = e.target.value !== "given_h";
+    if(e.target.value === "none") state.params.up.h = null;
+    markDirty();
+  });
+  $("#fUpH").addEventListener("input", e=>{ state.params.up.h = parseFloat(e.target.value); markDirty(); });
+  $("#fDownType").addEventListener("change", e=>{
+    state.params.down.type = e.target.value;
+    $("#fDownH").disabled = e.target.value !== "given_h";
+    if(e.target.value !== "given_h") state.params.down.h = null;
+    markDirty();
+  });
+  $("#fDownH").addEventListener("input", e=>{ state.params.down.h = parseFloat(e.target.value); markDirty(); });
+  $("#fJump").addEventListener("change", e=>{ state.params.jumpFormula = e.target.value; markDirty(); });
+
+  $("#addReach").addEventListener("click", ()=>{
+    const rs = state.params.reaches;
+    if(rs.length >= 4) return;
+    const last = rs[rs.length-1];
+    rs.push({x0: last.x1, x1: last.x1 + 300, i: last.i, b: last.b, m: last.m, n: last.n});
+    syncForm(); markDirty();
+  });
+  $("#delReach").addEventListener("click", ()=>{
+    if(state.params.reaches.length <= 1) return;
+    state.params.reaches.pop();
+    syncForm(); markDirty();
+  });
+  $("#calcBtn").addEventListener("click", ()=> computeAndRender());
+  $("#csvBtn").addEventListener("click", exportCSV);
+
+  document.querySelectorAll("#modeSeg button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const m = btn.dataset.mode;
+      if(m === state.mode) return;
+      state.mode = m;
+      document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode === m));
+      const a = m === "teaching" ? 1.0 : 1.05;
+      state.params.alpha = a; state.params.beta = a;
+      syncForm();
+      computeAndRender("模式切换：" + (m === "teaching" ? "教学" : "工程") + " α=" + a.toFixed(2));
+    });
+  });
+}
+function exportCSV(){
+  if(!state.result) return;
+  const rows = [["x","h","z_b","z_w","Es","Fr","v","type","regime"]];
+  for(const s of state.result.segments){
+    for(let i = 0; i < s.x.length; i++){
+      rows.push([s.x[i].toFixed(3), s.h[i].toFixed(4), s.zb[i].toFixed(4), s.zw[i].toFixed(4),
+                 s.es[i].toFixed(4), s.fr[i].toFixed(4), s.v[i].toFixed(4), s.type, s.regime]);
+    }
+  }
+  const csv = "\ufeff" + rows.map(r=>r.join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "water_surface_profile.csv";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ---------------- 图交互 ---------------- */
+function bindCanvas(){
+  const cv = $("#profile"), tip = $("#profileTip");
+  cv.addEventListener("mousemove", ev=>{
+    const g = cv._geom; if(!g) return;
+    const r = cv.getBoundingClientRect();
+    const px = ev.clientX - r.left;
+    if(px < g.pad.l || px > g.w - g.pad.r){ tip.classList.remove("on"); state.hover = null; return; }
+    const x = g.res.x0 + (px - g.pad.l)/(g.w - g.pad.l - g.pad.r)*(g.res.xL - g.res.x0);
+    state.hover = x;
+    const d = sectionData(x);
+    tip.innerHTML = "x = " + x.toFixed(1) + " m<br>水深 h = " + d.h.toFixed(3) + " m<br>" +
+      "水位 z = " + (d.zb + d.h).toFixed(3) + " m<br>Fr = " + d.Fr.toFixed(2) + " · " +
+      d.zt.type + (d.zt.regime === "sub" ? " 缓流" : d.zt.regime === "sup" ? " 急流" : " 临界");
+    tip.style.left = px + "px";
+    tip.style.top = (ev.clientY - r.top) + "px";
+    tip.classList.add("on");
+    drawProfile();
+  });
+  cv.addEventListener("mouseleave", ()=>{ tip.classList.remove("on"); state.hover = null; drawProfile(); });
+  cv.addEventListener("click", ev=>{
+    const g = cv._geom; if(!g) return;
+    const r = cv.getBoundingClientRect();
+    const px = ev.clientX - r.left;
+    if(px < g.pad.l || px > g.w - g.pad.r) return;
+    const x = g.res.x0 + (px - g.pad.l)/(g.w - g.pad.l - g.pad.r)*(g.res.xL - g.res.x0);
+    state.selectedX = Math.min(Math.max(x, g.res.x0), g.res.xL);
+    drawProfile(); drawSection();
+  });
+}
+
+/* =========================================================================
+   对话：本地规则解析（示例）。正式版经 DeepSeek Tool Calling 接入。
+   ========================================================================= */
+function chatAdd(text, who){
+  const box = $("#chatBody");
+  const el = document.createElement("div");
+  el.className = "msg " + (who === "me" ? "me" : who === "sys" ? "sys" : "ai");
+  el.innerHTML = who === "ai" ? '<span class="who">助手</span>' + escapeHTML(text) : escapeHTML(text);
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+function parseText(raw){
+  const t = raw.replace(/\s+/g, "");
+  const p = JSON.parse(JSON.stringify(state.params));
+  const applied = [];
+
+  if(/梯形/.test(t)){
+    if(p.reaches[0].m < 0.1){ p.reaches[0].m = 1.5; applied.push("断面=梯形（m=1.5）"); }
+  }
+  if(/矩形/.test(t) && p.reaches[0].m !== 0){ p.reaches[0].m = 0; applied.push("断面=矩形"); }
+
+  let m;
+  if((m = t.match(/底宽(?:为)?([\d.]+)/)) ){ p.reaches[0].b = +m[1]; applied.push("底宽=" + m[1] + " m"); }
+  if((m = t.match(/糙率(?:为|取)?([\d.]+)/))){ p.reaches[0].n = +m[1]; applied.push("糙率=" + m[1]); }
+  if((m = t.match(/边坡(?:系数)?(?:为|取)?([\d.]+)/))){ p.reaches[0].m = +m[1]; applied.push("边坡 m=" + m[1]); }
+
+  if((m = t.match(/坡度千分之([\d.]+)/))){ p.reaches[0].i = +m[1]/1000; applied.push("底坡=" + (+m[1]/1000).toFixed(5)); }
+  else if((m = t.match(/坡度(?:为|取)?([\d.]+)/))){ p.reaches[0].i = +m[1]; applied.push("底坡=" + m[1]); }
+  else if((m = t.match(/i=([\d.]+)/))){ p.reaches[0].i = +m[1]; applied.push("底坡=" + m[1]); }
+
+  if((m = t.match(/流量(?:为|取)?([\d.]+)/)) || (m = t.match(/([\d.]+)个?方/))){
+    p.Q = +m[1]; applied.push("流量=" + m[1] + " m³/s");
+  }
+  if((m = t.match(/水深(?:为|取)?([\d.]+)/))){ p.down = {type:"given_h", h:+m[1]};
+    applied.push("渠末水深=" + m[1] + " m"); }
+  if(/跌水|跌坎|自由出流/.test(t)){ p.down = {type:"free_outfall", h:null}; applied.push("渠末=自由跌水"); }
+  if(/上游.*?水深(?:为)?([\d.]+)/.test(t)){
+    const mm = t.match(/上游.*?水深(?:为)?([\d.]+)/);
+    p.up = {type:"given_h", h:+mm[1]}; applied.push("渠首水深=" + mm[1] + " m");
+  }
+  if((m = t.match(/渠长(?:为)?([\d.]+)/)) || (m = t.match(/长度(?:为)?([\d.]+)/))){
+    p.reaches = [{x0:0, x1:+m[1], i:p.reaches[0].i, b:p.reaches[0].b, m:p.reaches[0].m, n:p.reaches[0].n}];
+    applied.push("渠长=" + m[1] + " m");
+  }
+  return {params:p, applied};
+}
+function narrate(res){
+  const p = state.params;
+  const seq = [];
+  res.segments.forEach(s=>seq.push({x: minOf(s.x), t: s.type}));
+  res.transitions.forEach(t=>{
+    const lab = t.kind === "jump" ? "水跃" : t.kind === "critical" ? "临界" :
+                t.kind === "outfall" ? "水跌" : t.kind === "jump_submerged" ? "淹没水跃" : "跃出渠";
+    seq.push({x: t.x, t: lab});
+  });
+  seq.sort((a,b)=>a.x-b.x);
+  const line = seq.map(o=>o.t).join(" → ");
+  const f0 = res.infos[0];
+  let out = "全渠型序：" + (line || "（无）") + "。";
+  out += "\n第1段：h₀ = " + (f0.h0 == null ? "无" : f0.h0.toFixed(3) + " m") +
+         "，h_c = " + f0.hc.toFixed(3) + " m，i_c = " + f0.ic.toFixed(5) + "。";
+  const j = res.facts.jump;
+  if(j){
+    out += "\n水跃位于 x = " + j.x.toFixed(1) + " m：跃前 " + j.data.h1.toFixed(3) +
+           " m → 跃后 " + j.data.h2.toFixed(3) + " m，Fr₁ = " + j.data.Fr1.toFixed(2) +
+           "（" + j.data.jumpType + "），跃长 " + j.data.L.toFixed(2) +
+           " m，消能系数 K_j = " + j.data.Kj.toFixed(3) + "。";
+  }
+  if(res.facts.maxZw != null){
+    out += "\n最高水位 " + res.facts.maxZw.toFixed(3) + " m，出现在 x = " + res.facts.maxZwX.toFixed(0) + " m。";
+  }
+  return out;
+}
+function fakeAI(text){
+  const t = text.replace(/\s+/g, "");
+  if(/为什么|依据|判别|怎么判/.test(t)){
+    return "判别过程如下：\n" + state.result.reasons.slice(0, 8).join("\n");
+  }
+  if(/水跃/.test(t) && !/[\d]/.test(t)){
+    const j = state.result.facts.jump;
+    return j ? ("本工况在 x = " + j.x.toFixed(1) + " m 处发生" + j.data.jumpType +
+      "：跃前水深 " + j.data.h1.toFixed(3) + " m，跃后 " + j.data.h2.toFixed(3) +
+      " m，跃长 " + j.data.L.toFixed(2) + " m，消能系数 " + j.data.Kj.toFixed(3) +
+      "。计算依据为动量方程 θ(h₁)=θ(h₂)，未使用能量方程。")
+      : "本工况未出现水跃：上下游控制未形成急流与缓流的共轭交点。";
+  }
+  const {params, applied} = parseText(text);
+  if(!applied.length){
+    return "我识别到的问题里没有可用的水力参数。可以这样描述：\n" +
+      "「矩形渠 底宽5米 糙率0.015 坡度千分之一 流量10个方 水深2米」\n" +
+      "或直接使用左侧表单。";
+  }
+  state.params = params;
+  syncForm();
+  computeAndRender("对话：" + applied.join("，"));
+  return "已按你的描述设置参数：" + applied.join("；") + "。\n\n" + narrate(state.result) +
+    "\n\n（本原型使用本地规则解析模拟 AI 回复；正式版由 DeepSeek 经 Tool Calling 输出结构化参数，并由程序执行计算。）";
+}
+function sendMsg(){
+  const inp = $("#chatInput");
+  const v = inp.value.trim();
+  if(!v) return;
+  chatAdd(v, "me");
+  inp.value = "";
+  chatAdd("正在解析参数并计算…", "sys");
+  setTimeout(()=>{
+    const box = $("#chatBody");
+    const sys = box.querySelectorAll(".msg.sys");
+    if(sys.length) sys[sys.length-1].remove();
+    chatAdd(fakeAI(v), "ai");
+  }, 260);
+}
+
+/* ---------------- 初始化 ---------------- */
+function init(){
+  state.params = PRESETS[0].mk();
+  const sel = $("#fPreset");
+  sel.innerHTML = PRESETS.map(p=>'<option value="'+p.key+'">'+p.name+'</option>').join("");
+
+  bindForm();
+  bindCanvas();
+  syncForm();
+  computeAndRender("初始：M1 壅水");
+
+  $("#sendBtn").addEventListener("click", sendMsg);
+  $("#chatInput").addEventListener("keydown", e=>{ if(e.key === "Enter") sendMsg(); });
+
+  const chips = [
+    "矩形渠 底宽5米 糙率0.015 坡度千分之一 流量10个方 水深2米",
+    "渠末跌水",
+    "这个工况为什么是M1？",
+    "水跃在哪里？"
+  ];
+  $("#chips").innerHTML = chips.map(c=>'<span class="chip">'+c+'</span>').join("");
+  $("#chips").querySelectorAll(".chip").forEach(el=>{
+    el.addEventListener("click", ()=>{ $("#chatInput").value = el.textContent; sendMsg(); });
+  });
+
+  chatAdd("已加载样例算例。可以直接说话，也可以改左侧表单。", "ai");
+  chatAdd("提示：本原型的 AI 为本地规则解析，用于演示交互流程。", "sys");
+
+  let rt = null;
+  window.addEventListener("resize", ()=>{
+    clearTimeout(rt);
+    rt = setTimeout(()=>{ drawProfile(); drawSection(); }, 120);
+  });
+}
+init();
+</script>
+</body>
+</html>
