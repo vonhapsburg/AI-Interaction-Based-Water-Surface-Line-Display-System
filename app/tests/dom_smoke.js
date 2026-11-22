@@ -12,6 +12,7 @@ function makeCtx() {
   return new Proxy({}, {
     get(t, p) {
       if (p in t) return t[p];
+      if (p === 'measureText') return (s) => ({ width: String(s).length * 7 });
       return (...args) => { calls.push([p, args.length]); };
     },
     set(t, p, v) { t[p] = v; return true; },

@@ -120,7 +120,7 @@
   .segdot.s2{background:#2f7d54;}
   .segdot.s3{background:#7a3b0e;}
   .reachsum-form{margin-top:7px;display:flex;flex-direction:column;gap:3px;}
-  .rline{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap;line-height:1.5;}
+  .rline{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap;line-height:1.6;}
   .rline .rname{color:var(--ink);font-weight:600;}
   .rline .rrange{color:var(--faint);font-variant-numeric:tabular-nums;}
   .rline .sub{color:var(--faint);}
@@ -150,6 +150,7 @@
   .hint{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.5;}
   .hint.warn{color:var(--warn);}
   .hint.err{color:var(--err);}
+  .hint.ok{color:var(--ok);}
 
   /* legal */
   #legal{display:none;margin:0 12px 10px;border-radius:6px;padding:7px 10px;font-size:12px;line-height:1.6;border-left:3px solid;}
@@ -352,8 +353,8 @@
         <div class="card-h">计算结果 <span class="tag" id="statusTag"></span></div>
         <div class="card-b">
           <div class="badges" id="badges"><span style="color:#8b98a6;font-size:12.5px">尚未计算</span></div>
-          <div class="kv" id="kvBox"></div>
           <div id="reachSum"></div>
+          <div class="kv" id="kvBox"></div>
           <div class="wlist" id="warnBox"></div>
           <details class="mech" id="mechBox">
             <summary>力学依据（判别过程）</summary>
@@ -716,19 +717,39 @@ function drawProfile(){
     }
   }
 
-  /* 分段标签：第 N 段 · 坡型（强调分段，不只是整条渠一个型号） */
+  /* 分段标签：色点 + 第N段 + 坡型 + 该段曲线型号（强调"一段一条线"）*/
+  const SEGC = ["#2e6da4","#c9741f","#2f7d54","#7a3b0e"];
   rs.forEach((r,k)=>{
-    const xm = X((r.x_start + r.x_end)/2);
-    const txt = "第"+(k+1)+"段 · "+(SLOPE_TAG[r.slope_class]||"");
-    ctx.fillStyle="#a9b4bf"; ctx.font="11px -apple-system,Segoe UI,sans-serif";
-    ctx.textAlign="center"; ctx.textBaseline="top";
-    ctx.fillText(txt, xm, pad.t+3);
+    const segs = R.segments.filter(s=>s.reach_index===r.index)
+                           .map(s=>s.curve_type)
+                           .filter((v,i,a)=>a.indexOf(v)===i).join("/");
+    const txt = "第"+(k+1)+"段 · "+(SLOPE_TAG[r.slope_class]||"")+(segs?(" · "+segs):"");
+    ctx.font="600 11.5px -apple-system,Segoe UI,sans-serif";
+    const tw = ctx.measureText(txt).width;
+    const cx = X((r.x_start+r.x_end)/2);
+    const left = Math.min(Math.max(cx - tw/2 - 1, pad.l+2), w - pad.r - tw - 2);
+    ctx.fillStyle = SEGC[k%4];
+    ctx.fillRect(left-11, pad.t+6, 7, 7);
+    ctx.textAlign="left"; ctx.textBaseline="top";
+    ctx.fillText(txt, left, pad.t+3);
   });
-  /* 坡折节点竖线 */
+
+  /* 坡折节点：竖线 + 型序列（M2 ｜ 临界 ｜ S2）*/
   for(let k=1;k<rs.length;k++){
     const px = X(rs[k].x_start);
     ctx.save(); ctx.setLineDash([3,3]); ctx.strokeStyle="#c3ccd5"; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(px, pad.t+18); ctx.lineTo(px, h-pad.b); ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(px, pad.t+20); ctx.lineTo(px, h-pad.b); ctx.stroke(); ctx.restore();
+    const prev = R.segments.filter(s=>s.reach_index===k-1).map(s=>s.curve_type).slice(-1)[0] || "";
+    const next = R.segments.filter(s=>s.reach_index===k).map(s=>s.curve_type)[0] || "";
+    const tr = R.transitions.find(t=>Math.abs(t.x - rs[k].x_start) < 1e-3);
+    const mid = tr ? ({critical:"临界", jump:"水跃", jump_submerged:"淹没水跃",
+                       jump_washed:"水跃出渠", outfall:"水跌"}[tr.kind] || "衔接") : "";
+    const label = [prev, mid, next].filter(Boolean).join(" ｜ ");
+    if(label){
+      ctx.font="600 11px -apple-system,Segoe UI,sans-serif";
+      ctx.fillStyle="#7d8b99"; ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillText(label, Math.min(Math.max(px, pad.l+60), w-pad.r-60), pad.t+22);
+    }
   }
 
   /* 衔接事件 */
@@ -1113,12 +1134,16 @@ async function send(){
 
     if(r.added && r.added.length){
       const LAB = {section:"断面型式",b:"底宽",m:"边坡",n:"糙率",i:"底坡",Q:"流量",h0:"水深",L:"渠长",downstream:"渠末条件",zw:"水位"};
-      bubble("已记录："+r.added.map(k=>{
+      const shown = r.added.map(k=>{
         let v = state.slots[k];
         if(k==="section") v = v==="rectangular"?"矩形":"梯形";
         if(k==="downstream") v = {free_outfall:"自由跌水",given_h:"给定水深",given_zw:"给定水位",normal_depth:"正常水深"}[v]||v;
         return (LAB[k]||k)+"="+v;
-      }).join("、"),"ai","助手");
+      });
+      bubble("已记录："+shown.join("、"),"ai","助手");
+      // 表单底部同步提示：让"你说的已经进表了"有明确文字反馈
+      $("#formHint").textContent = "已按对话同步：" + shown.join("  ");
+      $("#formHint").className = "hint ok";
     }else if(!r.ready){
       bubble("这句话里没有识别出新参数。","ai","助手");
     }
@@ -1288,6 +1313,7 @@ async function init(){
                            {L:300,i:0.020,b:5,m:0,n:0.015}],
                   up:"none", upH:null, down:"free_outfall", downH:null};
     syncForm(); renderLegal(null);
+    $("#formHint").textContent = "已回到默认两段变坡示例。"; $("#formHint").className = "hint ok";
     $("#badges").innerHTML='<span style="color:#8b98a6;font-size:12.5px">尚未计算</span>';
     $("#kvBox").innerHTML=""; $("#warnBox").innerHTML=""; $("#reasonList").innerHTML="";
     $("#propsTable").innerHTML=""; $("#statusTag").textContent=""; $("#sectionTag").textContent="未选择位置";
@@ -1323,6 +1349,7 @@ async function init(){
     if(s.slots && Object.keys(s.slots).length){
       state.slots = s.slots; syncForm(s.slots);
       renderLegal(s.legal);
+      bubble("已恢复上次的参数，左侧表单已同步。想回到默认两段变坡示例，点「清空」。","ai","助手");
     }else{
       syncForm();
     }

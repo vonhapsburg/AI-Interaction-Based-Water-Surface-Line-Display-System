@@ -269,8 +269,19 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def end_headers(self):
+        # 页面改版后浏览器仍可能用旧缓存，这里显式禁用 HTML 缓存
+        try:
+            if self.path.split("?")[0].endswith(("/", ".html")):
+                self.send_header("Cache-Control", "no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+        except Exception:
+            pass
+        super().end_headers()
 
     # ---------------- GET ----------------
     def do_GET(self):
