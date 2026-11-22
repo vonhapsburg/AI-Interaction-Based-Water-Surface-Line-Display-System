@@ -255,7 +255,9 @@
     </section>
 
     <section class="card">
-      <div class="card-h">参数表单 <span class="tag">可手改，改后需重新计算</span></div>
+      <div class="card-h">参数表单
+        <span class="tag">可手改，改后需重新计算</span>
+      </div>
       <div class="card-b">
         <div class="grid3" style="margin-bottom:10px;">
           <div class="field"><label>流量 Q (m³/s)</label><input id="fQ" type="number" step="0.1" value="10"></div>
@@ -312,6 +314,7 @@
 
         <div style="display:flex;gap:8px;margin-top:12px;">
           <button class="primary" id="calcBtn" style="flex:1;">计 算</button>
+          <button class="ghost" id="demoBtn" title="恢复默认的两段变坡示例">载入示例</button>
           <button class="ghost" id="csvBtn">导出 CSV</button>
         </div>
         <div class="hint" id="formHint">参数已同步。</div>
@@ -1217,6 +1220,7 @@ function bindForm(){
     syncForm(); markDirty();
   });
   $("#calcBtn").addEventListener("click", calc);
+  $("#demoBtn").addEventListener("click", ()=>loadDemo(true));
   $("#csvBtn").addEventListener("click", exportCSV);
 
   document.querySelectorAll("#modeSeg button").forEach(btn=>{
@@ -1293,13 +1297,37 @@ const CHIPS = [
   "帮我算个水面线"
 ];
 
+/* 默认示例：两段变坡，坡度不同 —— 用来展示坡折处的水面线衔接 */
+const DEMO_FORM = {
+  Q: 10,
+  reaches: [{L:300, i:0.001, b:5, m:0, n:0.015},
+            {L:300, i:0.020, b:5, m:0, n:0.015}],
+  up: "none", upH: null, down: "free_outfall", downH: null
+};
+
+function loadDemo(notify){
+  const f = state.form;
+  f.Q = DEMO_FORM.Q;
+  f.reaches = DEMO_FORM.reaches.map(r=>Object.assign({}, r));
+  f.up = DEMO_FORM.up; f.upH = DEMO_FORM.upH;
+  f.down = DEMO_FORM.down; f.downH = DEMO_FORM.downH;
+  syncForm();
+  $("#formHint").textContent = "已载入默认两段变坡示例。";
+  $("#formHint").className = "hint ok";
+  if(notify) bubble("已载入默认示例：两段变坡（缓坡 0.001 → 陡坡 0.020），看坡折处的水面线衔接。","ai","助手");
+  calc();
+}
+
 async function init(){
-  $("#chips").innerHTML = CHIPS.slice(0,4).map(c=>'<span class="chip">'+c+'</span>').join("");
+  $("#chips").innerHTML =
+    '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
+    CHIPS.slice(1, 4).map(c=>'<span class="chip">'+c+'</span>').join("");
+  $("#chipDemo").onclick = ()=>loadDemo(true);
   $("#chips").querySelectorAll(".chip").forEach(el=>{
+    if(el.id === "chipDemo") return;
     el.onclick = ()=>{ $("#chatInput").value = el.textContent; $("#chatInput").focus(); };
   });
   bubble("你好，直接用一句话描述渠道即可；也可以逐条补充参数，我会累加。","ai","助手");
-  bubble("当前载入的是默认算例：两段变坡（缓坡 0.001 → 陡坡 0.020），可直接看坡折处的水面线衔接。","ai","助手");
   sysNote("提示：计算由本地 Python 内核算，本页只负责显示；模型只做语言解析。");
 
   bindForm(); bindCanvas();
@@ -1349,9 +1377,14 @@ async function init(){
     if(s.slots && Object.keys(s.slots).length){
       state.slots = s.slots; syncForm(s.slots);
       renderLegal(s.legal);
-      bubble("已恢复上次的参数，左侧表单已同步。想回到默认两段变坡示例，点「清空」。","ai","助手");
+      const single = (s.slots.reaches && s.slots.reaches.length === 1)
+                     || (!s.slots.reaches && s.slots.b != null);
+      bubble("已恢复上次的参数，左侧表单已同步。" +
+             (single ? "当前是单段渠道；想回到默认两段变坡示例，点「载入示例」或「清空」。" : ""),
+             "ai","助手");
     }else{
       syncForm();
+      bubble("当前载入默认示例：两段变坡（缓坡 0.001 → 陡坡 0.020），可直接看坡折处的水面线衔接。","ai","助手");
     }
   }catch(e){ syncForm(); }
 

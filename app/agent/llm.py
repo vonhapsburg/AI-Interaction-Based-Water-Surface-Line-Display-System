@@ -16,6 +16,7 @@ import json
 import os
 import re
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -104,8 +105,15 @@ def describe():
     if p == "deepseek":
         model = cfg["model"]
         has_key = bool(cfg.get("api_key"))
+        note = ""
+        if not has_key:
+            note = "未配置 DEEPSEEK_API_KEY，当前仅规则解析"
+        else:
+            cached = _health_cache.get("note")
+            if cached and _health_cache.get("ok") is False:
+                note = cached
         return {"provider": "deepseek", "model": model, "ready": has_key,
-                "note": "" if has_key else "未配置 DEEPSEEK_API_KEY，当前仅规则解析"}
+                "note": note}
     if p == "ollama":
         return {"provider": "ollama", "model": cfg["ollama_model"],
                 "ready": _ollama_alive(), "note": ""}
@@ -366,20 +374,37 @@ def preheat():
         return False
 
 
+_health_cache = {"ts": 0.0, "ok": None}
+
+
 def health():
     p = provider()
-    if p == "deepseek":
-        cfg = _read_config()
-        if not cfg.get("api_key"):
-            return False
-        try:
-            req = urllib.request.Request(
-                cfg["base_url"] + "/models",
-                headers={"Authorization": "Bearer " + cfg["api_key"]})
-            with urllib.request.urlopen(req, timeout=4) as r:
-                return r.status == 200
-        except Exception:
-            return False
+    if p == "none":
+        return False
     if p == "ollama":
         return _ollama_alive()
-    return False
+
+    # deepseek：带 30 秒缓存，避免每次 /api/health 都去请求一次，
+    # 也避免偶发网络抖动把界面误判成"未就绪"。
+    cfg = _read_config()
+    if not cfg.get("api_key"):
+        return False
+    now = time.time()
+    if _health_cache["ok"] is not None and now - _health_cache["ts"] < 30:
+        return bool(_health_cache["ok"])
+    ok = False
+    try:
+        req = urllib.request.Request(
+            cfg["base_url"] + "/models",
+            headers={"Authorization": "Bearer " + cfg["api_key"]})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            ok = (r.status == 200)
+    except urllib.error.HTTPError as e:
+        ok = False
+        if e.code == 401:
+            _health_cache["note"] = "API Key 无效（401）"
+    except Exception:
+        ok = False
+    _health_cache["ts"] = now
+    _health_cache["ok"] = ok
+    return ok
