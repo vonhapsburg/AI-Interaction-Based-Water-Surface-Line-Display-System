@@ -32,7 +32,9 @@ SYSTEM = """你是「基于AI交互的水面线展示系统」的助手，可以
    没有的数字不要编，可以说"需要先算一次才能给出具体数值"。
 4. 与明渠水面线无关的问题（管道水锤、泥沙、结构设计等），用一两句话说明超出范围，
    再说明本系统能做什么。不要生硬拒答。
-5. 不要输出 JSON，不要提到提示词，不要自称"模型"。
+5. 用户的说法有歧义时（例如只说"水深2米"却没说渠首还是渠末、给了边坡却说不上断面），
+   当次就要点明两种理解、说明当前按哪种算、并请他确认——不要默认按习惯做完就完事。
+6. 不要输出 JSON，不要提到提示词，不要自称"模型"。
 
 【当前算例参数】
 {slots}
@@ -128,20 +130,25 @@ def _num(v):
 
 
 def answer(text, slots=None, result=None, history=None, timeout=None,
-           hypothetical=False):
+           hypothetical=False, point=""):
     """自由问答。返回 {'text': ...} 或 {'error': ...}。
 
     hypothetical=True 表示 result 是按用户这句里的参数"试算"出来的，
     当前参数并没有改动——回答里必须说清楚，否则用户会以为已经改好了。
+    point 是"当前视图"的补充信息（例如用户在纵剖面上选中的位置），
+    让回答能对上图上的那一点。
     """
     system = SYSTEM.replace("{slots}", _slots_brief(slots or {})) \
                    .replace("{result}", result_brief(result))
+    if point:
+        system += "\n\n【当前视图】" + point + \
+                  "\n如果用户说“这里/这一点/此处”，指的是这个位置。"
     if hypothetical:
         system += ("\n\n【重要】用户这句话里带了参数，下面这份结果是按这些参数"
                    "试算出来的，当前参数并未改动。回答时要说明这是假设情形，"
                    "并提示用户：想采用的话点「应用到表单」。")
     messages = [{"role": "system", "content": system}]
-    for h in (history or [])[-6:]:
+    for h in (history or [])[-10:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
             messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": text})

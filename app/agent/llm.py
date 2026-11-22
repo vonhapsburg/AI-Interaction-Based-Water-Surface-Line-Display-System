@@ -349,6 +349,27 @@ def _ask_ollama(text, current, cfg, timeout):
         return {"error": "%s: %s" % (type(e).__name__, e)}
 
 
+# ---------------------------------------------------------------- 调用限流
+# 这个系统是小范围使用的：万一 key 被抄走或页面被别的站点驱动，
+# 限流能把损失控制在很小范围内。上限可在 config.ini 里改。
+_rl = {"calls": []}
+
+
+def _rate_ok(cfg):
+    try:
+        limit = int(cfg.get("max_calls_per_hour") or 240)
+    except (TypeError, ValueError):
+        limit = 240
+    if limit <= 0:
+        return True
+    now = time.time()
+    _rl["calls"] = [t for t in _rl["calls"] if now - t < 3600]
+    if len(_rl["calls"]) >= limit:
+        return False
+    _rl["calls"].append(now)
+    return True
+
+
 # ---------------------------------------------------------------- 自由对话
 def _chat_deepseek(messages, cfg, timeout, max_tokens, temperature):
     key = (cfg.get("api_key") or "").strip()
@@ -415,6 +436,8 @@ def _chat_ollama(messages, cfg, timeout, max_tokens, temperature):
 def chat(messages, timeout=None, max_tokens=700, temperature=0.4):
     """自由问答（不强制 JSON）。给 chat.py 用。"""
     cfg = _read_config()
+    if not _rate_ok(cfg):
+        return {"error": "调用过于频繁，已触发本机限流（每小时上限见 config.ini）"}
     if timeout is None:
         try:
             timeout = float(cfg.get("timeout") or 30)
@@ -432,6 +455,8 @@ def chat(messages, timeout=None, max_tokens=700, temperature=0.4):
 def ask(text, current=None, timeout=None):
     """抽取这一句话里的字段。失败返回 {'error': ...}，调用方退回规则通道。"""
     cfg = _read_config()
+    if not _rate_ok(cfg):
+        return {"error": "调用过于频繁，已触发本机限流（每小时上限见 config.ini）"}
     if timeout is None:
         try:
             timeout = float(cfg.get("timeout") or 30)

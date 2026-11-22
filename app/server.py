@@ -127,6 +127,83 @@ _TYPE_CODES = ("M1", "M2", "M3", "S1", "S2", "S3", "C1", "C3",
                "H2", "H3", "A2", "A3")
 
 
+def _point_note(x):
+    """把"纵剖面上选中的位置"整理成一句话，交给对话模型当上下文。"""
+    if x is None:
+        return ""
+    res, pr = CACHE["result"], CACHE["params"]
+    if res is None or pr is None:
+        return "用户在纵剖面上选中 x=%.1f m，但当前还没有计算结果。" % x
+    try:
+        sa = gvf_core.section_at_point(pr, res.reaches, res.segments,
+                                       res.transitions, x)
+    except Exception:
+        return "用户在纵剖面上选中 x=%.1f m。" % x
+    if not sa or not sa.get("found"):
+        return "用户在纵剖面上选中 x=%.1f m。" % x
+    regime = "急流" if sa.get("regime") == "supercritical" else "缓流"
+    return ("用户在纵剖面上选中 x=%.1f m：第%d段，水深 h=%.3f m，渠底高程 %.3f m，"
+            "水面高程 %.3f m，Fr=%.3f，曲线型号 %s（%s）。"
+            % (x, int(sa.get("reach_index", 0)) + 1, sa.get("h", 0.0),
+               sa.get("z_b", 0.0), sa.get("z_w", 0.0), sa.get("Fr", 0.0),
+               sa.get("curve_type", ""), regime))
+
+
+def _focus_from_reply(reply, res):
+    """回答里提到水跃/水跌/临界时，让图跟着跳到那个位置（对话 → 图）。"""
+    if res is None or not reply:
+        return None
+    r = reply
+    if "跃" in r:
+        for t in res.transitions:
+            if t.kind in ("jump", "jump_submerged", "jump_washed"):
+                return round(float(t.x), 1)
+    if "水跌" in r or "跌水" in r:
+        for t in res.transitions:
+            if t.kind == "outfall":
+                return round(float(t.x), 1)
+    if "临界" in r:
+        for t in res.transitions:
+            if t.kind == "critical":
+                return round(float(t.x), 1)
+    return None
+
+
+_BOUNDARY_WORDS = re.compile(
+    r"渠末|末端|下游|出口|渠首|上游|进口|跌水|自由出流|正常水深控制|临界控制")
+
+
+def _ambiguity(text, added):
+    """找出这一句里"看着像、但有两种合理理解"的地方，交给用户一句话点选。
+
+    典型：只说「水深2米」——可能是渠末控制，也可能是渠首控制。
+    默认按渠末算，但必须当次就说明并给出切换，而不是等用户第二次纠正。
+    """
+    out = []
+    t = text or ""
+    if "h0" in (added or []) and not _BOUNDARY_WORDS.search(t):
+        out.append({
+            "field": "h0",
+            "question": "这个水深是「渠末控制」还是「渠首控制」？当前先按渠末算。",
+            "options": [
+                {"label": "渠末控制（默认）",
+                 "patch": {"downstream": "given_h", "upstream": "none"}},
+                {"label": "渠首控制",
+                 "patch": {"upstream": "given_h", "downstream": "free_outfall"}},
+            ],
+        })
+    if "m" in (added or []) and not re.search(r"矩形|梯形|长方形|方形", t):
+        out.append({
+            "field": "section",
+            "question": "给了边坡说明是梯形断面，确认一下断面型式？当前按梯形算。",
+            "options": [
+                {"label": "梯形（默认）", "patch": {"section": "trapezoidal"}},
+                {"label": "矩形", "patch": {"section": "rectangular"}},
+            ],
+        })
+    return out
+
+
 def _generate_intent(text):
     """识别「给我一个水跃样例 / 来个 M2 的例子」这类请求。"""
     t = text or ""
@@ -386,6 +463,12 @@ class Handler(SimpleHTTPRequestHandler):
     # ---------------- POST ----------------
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
+        # 只接受本机页面发来的请求，避免被其他站点/局域网页面驱动去消耗 key
+        origin = self.headers.get("Origin") or ""
+        if origin:
+            host = origin.split("//")[-1].split("/")[0].split(":")[0]
+            if host not in ("127.0.0.1", "localhost", "::1", ""):
+                return self._json({"error": "拒绝来自其他站点的请求"}, 403)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
@@ -412,6 +495,13 @@ class Handler(SimpleHTTPRequestHandler):
                 hyp_result = None
                 hyp_slots = None
                 hyp_curves = None
+                # 前端把"纵剖面上选中的位置"带上来，回答才能对上那一点
+                ctx_in = body.get("context") or {}
+                sel_x = ctx_in.get("x")
+                try:
+                    sel_x = float(sel_x) if sel_x is not None else None
+                except (TypeError, ValueError):
+                    sel_x = None
 
                 # 「给我一个水跃/水跌/M1 的样例」优先于参数抽取：
                 # 这类请求由生成器出参数并当场验证，不允许被当成"记录参数"。
@@ -478,7 +568,8 @@ class Handler(SimpleHTTPRequestHandler):
                     rep = chatmod.answer(text, slots,
                                          hyp_result if hyp_result is not None else CACHE["result"],
                                          STATE["chat"],
-                                         hypothetical=hyp_result is not None)
+                                         hypothetical=hyp_result is not None,
+                                         point=_point_note(sel_x))
                     if "text" in rep and rep["text"]:
                         reply = rep["text"]
                         channels.append("chat")
@@ -498,6 +589,8 @@ class Handler(SimpleHTTPRequestHandler):
 
                 return self._json({
                     "act": act, "reply": reply,
+                    "focus_x": _focus_from_reply(reply, CACHE["result"]),
+                    "ambiguities": _ambiguity(text, added),
                     "hypothesis": ({"slots": hyp_slots, "curves": hyp_curves}
                                    if hyp_slots else None),
                     "channels": channels, "added": added, "delta": r["delta"],

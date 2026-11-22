@@ -51,6 +51,12 @@ global.document = {
   body: makeEl('body'),
 };
 global.window = { devicePixelRatio: 1, addEventListener() {} };
+global.localStorage = {
+  _d: {},
+  getItem(k) { return Object.prototype.hasOwnProperty.call(this._d, k) ? this._d[k] : null; },
+  setItem(k, v) { this._d[k] = String(v); },
+  removeItem(k) { delete this._d[k]; },
+};
 global.location = { search: '' };
 global.URLSearchParams = URLSearchParams;
 global.URLParams = URLSearchParams;
