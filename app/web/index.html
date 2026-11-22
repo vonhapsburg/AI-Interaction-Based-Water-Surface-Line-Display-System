@@ -1125,7 +1125,7 @@ async function calc(){
     }
     syncForm(state.slots);
     $("#formHint").textContent = "参数已同步。"; $("#formHint").className = "hint";
-    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip();
+    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip(); renderChips();
   }catch(e){
     $("#formHint").textContent = "计算失败："+e.message; $("#formHint").className="hint err";
   }finally{ btn.disabled = false; }
@@ -1286,7 +1286,7 @@ async function applyPatch(patch, label){
     syncForm(state.slots);
     const rs = state.result.reaches;
     state.selectedX = rs[0].x_start + 0.55*(rs[rs.length-1].x_end - rs[0].x_start);
-    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip();
+    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip(); renderChips();
     bubble("已按「"+(label||"该选项")+"」重新计算：" +
            state.result.segments.map(s=>s.curve_type).join(" → "),"ai","助手");
   }catch(e){ bubble("应用失败："+e.message,"ai","助手"); }
@@ -1308,7 +1308,7 @@ async function applyHypothesis(slots, btn){
     syncForm(state.slots);
     const rs = state.result.reaches;
     state.selectedX = rs[0].x_start + 0.55*(rs[rs.length-1].x_end - rs[0].x_start);
-    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip();
+    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip(); renderChips();
     bubble("已应用，型序列：" + state.result.segments.map(s=>s.curve_type).join(" → "),
            "ai","助手");
   }catch(e){
@@ -1334,6 +1334,7 @@ async function loadPresets(){
     html += '<div class="pgroup"><div class="pgroup-h">随机生成（每次不同，均经内核验证）</div><div class="pchips">' +
       '<span class="pchip gen" data-gen="jump">🎲 随机水跃样例</span>' +
       '<span class="pchip gen" data-gen="outfall">🎲 随机水跌样例</span>' +
+      '<span class="pchip gen" data-gen="drop">🎲 随机坡折水跌</span>' +
       '</div></div>';
     $("#presetPanel").innerHTML = html;
 
@@ -1521,13 +1522,44 @@ function bindChatResizer(){
   });
 }
 
-const CHIPS = [
+const BASE_CHIPS = [
   "你会什么？",
-  "这个工况为什么是M1？",
+  "怎么用？",
   "什么是临界水深？",
   "水跃是怎么判定的？",
   "帮我算个水面线"
 ];
+
+/* 「猜你想问」：跟随当前工况变化，而不是永远问"为什么是M1" */
+function renderChips(){
+  const holder = $("#chips"); if(!holder) return;
+  const R = state.result;
+  const chips = [];
+  if(R && R.segments && R.segments.length){
+    const types = [...new Set(R.segments.map(s=>s.curve_type))];
+    chips.push("这个工况为什么是"+types.join("/")+"？");
+    const kinds = new Set((R.transitions||[]).map(t=>t.kind));
+    if(kinds.has("jump")) chips.push("水跃在哪个位置？跃长怎么算？");
+    if(kinds.has("outfall")) chips.push("渠末为什么会形成水跌？");
+    if(kinds.has("critical")) chips.push("坡折处为什么正好是临界水深？");
+    const rs = R.reaches || [];
+    if(rs.length > 1) chips.push("两段之间是怎么衔接的？");
+    const slopes = [...new Set(rs.map(r=>r.slope_class))];
+    if(slopes.length) chips.push("哪个参数对结果影响最大？");
+  }else{
+    chips.push("怎么用？", "给我一个水跃样例", "给我一个坡折水跌样例");
+  }
+  const all = chips.concat(BASE_CHIPS.filter(c=>chips.indexOf(c) < 0)).slice(0, 7);
+  holder.innerHTML =
+    '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
+    all.map(c=>'<span class="chip">'+c+'</span>').join("");
+  const demo = $("#chipDemo");
+  if(demo) demo.onclick = ()=>loadDemo(true);
+  holder.querySelectorAll(".chip").forEach(el=>{
+    if(el.id === "chipDemo") return;
+    el.onclick = ()=>{ $("#chatInput").value = el.textContent; send(); };
+  });
+}
 
 /* 默认示例：两段变坡，坡度不同 —— 用来展示坡折处的水面线衔接 */
 const DEMO_FORM = {
@@ -1551,14 +1583,7 @@ function loadDemo(notify){
 }
 
 async function init(){
-  $("#chips").innerHTML =
-    '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
-    CHIPS.slice(0, 3).map(c=>'<span class="chip">'+c+'</span>').join("");
-  $("#chipDemo").onclick = ()=>loadDemo(true);
-  $("#chips").querySelectorAll(".chip").forEach(el=>{
-    if(el.id === "chipDemo") return;
-    el.onclick = ()=>{ $("#chatInput").value = el.textContent; $("#chatInput").focus(); };
-  });
+  renderChips();
   bubble("你好，直接用一句话描述渠道即可；也可以逐条补充参数，我会累加。","ai","助手");
   sysNote("提示：计算由本地 Python 内核算，本页只负责显示；模型只做语言解析。");
 

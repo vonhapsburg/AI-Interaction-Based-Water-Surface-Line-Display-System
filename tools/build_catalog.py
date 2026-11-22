@@ -148,6 +148,41 @@ def build_catalog():
     return catalog
 
 
+def build_class_cases(cat):
+    """五类综合算例：照教材图 (a)(c)(e)(g)(i) 的分支关系组织。
+
+    单段渠道一次只能呈现一条曲线，所以每类挑"能同时出现两条分支"的算例，
+    并在说明里写清 N-N 线（正常水深）与 C-C 线（临界水深）如何划分三条支线。
+    """
+    by_key = {it["key"]: it for it in cat}
+    spec = [
+        ("class_M", "type_M3", "M 类 · 缓坡（M1 / M2 / M3）",
+         "对照教材图 (a)：N-N 线以上为 M1，N-N 与 C-C 之间为 M2，C-C 以下为 M3。"
+         "本算例从Ⅲ区起算，先走 M3，越过后形成水跃转入 M2；把渠末水深调大可得 M1。"),
+        ("class_S", "type_S1", "S 类 · 陡坡（S1 / S2 / S3）",
+         "对照教材图 (c)：C-C 线以上为 S1，C-C 与 N-N 之间为 S2，N-N 以下为 S3。"
+         "本算例由下游控制向上游推算，可看到 S2 过渡到 S1。"),
+        ("class_C", "type_C3", "C 类 · 临界坡（C1 / C3）",
+         "对照教材图 (e)：C-C 与 N-N 重合，只有 C1（上方）与 C3（下方）两支。"
+         "临界坡对参数极敏感，i 必须正好等于 i_c。"),
+        ("class_H", "type_H3", "H 类 · 平坡（H2 / H3）",
+         "对照教材图 (g)：平坡没有 N-N 线，C-C 线以上为 H2、以下为 H3。"),
+        ("class_A", "type_A3", "A 类 · 负坡（A2 / A3）",
+         "对照教材图 (i)：负坡同样没有 N-N 线，C-C 线以上为 A2、以下为 A3。"),
+    ]
+    out = []
+    for key, src, label, desc in spec:
+        it = by_key.get(src)
+        if it is None:
+            print("  [综合算例缺源] %s ← %s" % (key, src))
+            continue
+        out.append({"key": key, "group": "五类综合", "label": label, "desc": desc,
+                    "params": it["params"], "expect_types": it["expect_types"],
+                    "reaches": it["reaches"]})
+        print("  [OK] %-10s ← %-8s %s" % (key, src, it["expect_types"]))
+    return out
+
+
 def build_combos_and_cases():
     out = []
     # 缓→缓
@@ -189,6 +224,16 @@ def build_combos_and_cases():
                     "desc": "%s" % " → ".join(types_of(r)),
                     "params": p, "expect_types": types_of(r),
                     "expect_jump": has_kind(r, "jump"), "reaches": reach_info(r)})
+    # 水跌：缓坡转陡坡，坡折处临界控制形成跌水（不是只有渠末自由跌水）
+    p = make([{"L": 400, "i": 0.001, "b": B, "m": 0, "n": N},
+              {"L": 400, "i": 0.020, "b": B, "m": 0, "n": N}], down="free_outfall")
+    r = run(p)
+    if r and r.status == "ok" and any(t.kind == "critical" for t in r.transitions):
+        out.append({"key": "case_drop", "group": "典型现象",
+                    "label": "水跌 · 缓坡转陡坡（坡折跌水）",
+                    "desc": "%s，坡折处临界控制、水面跌落" % " → ".join(types_of(r)),
+                    "params": p, "expect_types": types_of(r),
+                    "expect_transition": "critical", "reaches": reach_info(r)})
     # 水跌：缓坡 + 渠末自由跌水
     p = make([{"L": 600, "i": 0.001, "b": B, "m": 0, "n": N}], down="free_outfall")
     r = run(p)
@@ -217,8 +262,12 @@ def build_combos_and_cases():
 if __name__ == "__main__":
     print("搜索 12 型 ...")
     cat = build_catalog()
+    print("构建五类综合算例 ...")
+    classes = build_class_cases(cat)
     print("构建组合与典型现象 ...")
-    cat += build_combos_and_cases()
+    rest = build_combos_and_cases()
+    # 五类综合放在最前面（示例算例的第一部分）
+    cat = classes + cat + rest
 
     data = {"generated_by": "tools/build_catalog.py",
             "note": "每条都经 gvf_core.solve() 验证",

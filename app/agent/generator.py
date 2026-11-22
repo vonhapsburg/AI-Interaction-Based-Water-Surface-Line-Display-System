@@ -189,12 +189,40 @@ def random_type(target, tries=200, rng=None):
     return None
 
 
+def random_drop(tries=300, rng=None):
+    """随机找一组"缓坡转陡坡、坡折处临界控制形成跌水"的参数。"""
+    rng = rng or random.Random()
+    for _ in range(tries):
+        q = round(rng.uniform(8, 18), 1)
+        b = round(rng.uniform(4, 8), 1)
+        n = round(rng.uniform(0.012, 0.020), 3)
+        i1 = round(rng.uniform(0.0005, 0.0020), 5)
+        i2 = round(rng.uniform(0.010, 0.050), 4)
+        L1 = round(rng.uniform(200, 500), -1)
+        L2 = round(rng.uniform(200, 400), -1)
+        p = _two(i1, i2, L1, L2, b, 0, 0, n, q)
+        res = _solve(p)
+        if res is None or res.status != "ok":
+            continue
+        crit = [t for t in res.transitions if t.kind == "critical"]
+        if not crit:
+            continue
+        if abs(crit[0].x - L1) > 5:      # 必须发生在坡折处
+            continue
+        return _summarize(res, p, "rand_drop", "随机坡折水跌样例",
+                          "缓坡转陡坡，坡折处临界控制、水面跌落（里程 %.0f m）"
+                          % crit[0].x)
+    return None
+
+
 def random_combo(kind, rng=None):
     rng = rng or random.Random()
     if kind == "jump":
         return random_jump(rng=rng)
     if kind == "outfall":
         return random_outfall(rng=rng)
+    if kind == "drop":
+        return random_drop(rng=rng)
     if kind in ("M1", "M2", "M3", "S1", "S2", "S3", "C1", "C3",
                 "H2", "H3", "A2", "A3"):
         return random_type(kind, rng=rng)

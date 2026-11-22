@@ -8,6 +8,7 @@
 """
 import json
 import os
+import random
 import re
 import copy
 import sqlite3
@@ -215,6 +216,9 @@ def _generate_intent(text):
     if re.search(r"水跃", t):
         return "jump"
     if re.search(r"水跌|跌水", t):
+        # 坡折处/缓转陡的跌水，与渠末自由跌水是两种不同成因
+        if re.search(r"坡折|变坡|缓.*陡|转坡|坡脚|跌坎", t):
+            return "drop"
         return "outfall"
     if re.search(r"缓坡.*陡坡|缓.*转.*陡", t):
         return "combo_mild_steep"
@@ -507,11 +511,18 @@ class Handler(SimpleHTTPRequestHandler):
                 # 这类请求由生成器出参数并当场验证，不允许被当成"记录参数"。
                 gen_kind = _generate_intent(text)
                 gen_item = None
+                if gen_kind == "outfall":
+                    # 只说"水跌"时，两种成因都要有机会出现：
+                    # 渠末自由跌水 / 缓转陡坡折跌水
+                    if random.random() < 0.5:
+                        gen_kind = "drop"
                 if gen_kind:
                     try:
                         gen_item = generator.random_combo(gen_kind)
                     except Exception:
                         gen_item = None
+                    if gen_item is None and gen_kind == "drop":
+                        gen_item = generator.random_combo("outfall")
                 if gen_item is not None:
                     reply = generator.describe(gen_item)
                     with LOCK:

@@ -55,8 +55,33 @@ def main():
           [x["label"] for x in groups.get("12 型", [])])
     check("有坡度组合（缓缓/陡陡/缓陡/陡缓）", len(groups.get("坡度组合", [])) >= 4,
           [x["label"] for x in groups.get("坡度组合", [])])
-    check("有典型现象（水跃/水跌）", len(groups.get("典型现象", [])) >= 2,
+    check("有典型现象（水跃/水跌）", len(groups.get("典型现象", [])) >= 3,
           [x["label"] for x in groups.get("典型现象", [])])
+    # ---- 五类综合：必须是第一部分 ----
+    first = (p.get("groups") or [{}])[0].get("name")
+    check("「五类综合」排在第一位", first == "五类综合", first)
+    check("五类综合共 5 条（M/S/C/H/A）", len(groups.get("五类综合", [])) == 5,
+          [x["label"] for x in groups.get("五类综合", [])])
+    want_slope = {"class_M": "mild", "class_S": "steep", "class_C": "critical",
+                  "class_H": "horizontal", "class_A": "adverse"}
+    bad_cls = []
+    for it in groups.get("五类综合", []):
+        code, pr = req("/api/preset?key=" + it["key"])
+        if not pr.get("params"):
+            bad_cls.append((it["key"], "取参数失败"))
+            continue
+        code, s = solve_params(pr["params"])
+        if not s.get("ok"):
+            bad_cls.append((it["key"], "计算失败"))
+            continue
+        slopes = {r["slope_class"] for r in s["result"]["reaches"]}
+        if want_slope.get(it["key"]) not in slopes:
+            bad_cls.append((it["key"], slopes))
+    check("五类综合各自坡型正确", not bad_cls, bad_cls)
+    # ---- 水跌两种成因都要在 ----
+    labels = [x["label"] for x in groups.get("典型现象", [])]
+    check("典型现象含坡折跌水与渠末跌水",
+          any("坡折" in x for x in labels) and any("渠末" in x for x in labels), labels)
     lines.append("")
 
     # ---------- 2. 每条预设都要真的算出它说的型号 ----------
@@ -109,6 +134,17 @@ def main():
     check("两次生成的参数不同（确实随机）", not same,
           "Q=%s vs %s" % ((item.get("params") or {}).get("Q"),
                           (it3.get("params") or {}).get("Q")))
+
+    # 坡折水跌：缓坡转陡坡，坡折处临界控制
+    code, g4 = req("/api/generate?kind=drop")
+    it4 = g4.get("item") or {}
+    check("坡折水跌样例成功", bool(it4), g4.get("error"))
+    if it4:
+        check("坡折水跌发生在坡折处", "critical" in (it4.get("transitions") or []),
+              it4.get("transitions"))
+        check("坡折水跌是两段（缓→陡）", len(it4.get("reaches") or []) == 2,
+              [r["slope"] for r in it4.get("reaches") or []])
+        lines.append("  坡折水跌样例：%s" % " → ".join(it4["types"]))
     lines.append("")
 
     # ---------- 4. 对话里要样例 ----------

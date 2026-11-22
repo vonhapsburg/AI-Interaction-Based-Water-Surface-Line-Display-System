@@ -3,6 +3,211 @@
  "note": "每条都经 gvf_core.solve() 验证",
  "items": [
   {
+   "key": "class_M",
+   "group": "五类综合",
+   "label": "M 类 · 缓坡（M1 / M2 / M3）",
+   "desc": "对照教材图 (a)：N-N 线以上为 M1，N-N 与 C-C 之间为 M2，C-C 以下为 M3。本算例从Ⅲ区起算，先走 M3，越过后形成水跃转入 M2；把渠末水深调大可得 M1。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "M3",
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "class_S",
+   "group": "五类综合",
+   "label": "S 类 · 陡坡（S1 / S2 / S3）",
+   "desc": "对照教材图 (c)：C-C 线以上为 S1，C-C 与 N-N 之间为 S2，N-N 以下为 S3。本算例由下游控制向上游推算，可看到 S2 过渡到 S1。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.4830654708307356,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2",
+    "S1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "class_C",
+   "group": "五类综合",
+   "label": "C 类 · 临界坡（C1 / C3）",
+   "desc": "对照教材图 (e)：C-C 与 N-N 重合，只有 C1（上方）与 C3（下方）两支。临界坡对参数极敏感，i 必须正好等于 i_c。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.003447904966425708,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.37076636770766236
+   },
+   "expect_types": [
+    "C3",
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.003447904966425708,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.7415,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "class_H",
+   "group": "五类综合",
+   "label": "H 类 · 平坡（H2 / H3）",
+   "desc": "对照教材图 (g)：平坡没有 N-N 线，C-C 线以上为 H2、以下为 H3。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "H3",
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "class_A",
+   "group": "五类综合",
+   "label": "A 类 · 负坡（A2 / A3）",
+   "desc": "对照教材图 (i)：负坡同样没有 N-N 线，C-C 线以上为 A2、以下为 A3。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "A3",
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
    "key": "type_M1",
    "group": "12 型",
    "label": "M1 · 缓坡Ⅰ区",
@@ -720,6 +925,66 @@
      "n": 0.015,
      "slope": "mild",
      "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "case_drop",
+   "group": "典型现象",
+   "label": "水跌 · 缓坡转陡坡（坡折跌水）",
+   "desc": "M2 → S2，坡折处临界控制、水面跌落",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2",
+    "S2"
+   ],
+   "expect_transition": "critical",
+   "reaches": [
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 400.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
      "hc": 0.7415,
      "ic": 0.003448
     }
