@@ -349,6 +349,85 @@ def _ask_ollama(text, current, cfg, timeout):
         return {"error": "%s: %s" % (type(e).__name__, e)}
 
 
+# ---------------------------------------------------------------- 自由对话
+def _chat_deepseek(messages, cfg, timeout, max_tokens, temperature):
+    key = (cfg.get("api_key") or "").strip()
+    if not key:
+        return {"error": "未配置 DEEPSEEK_API_KEY"}
+    body = {
+        "model": cfg["model"],
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    req = urllib.request.Request(
+        cfg["base_url"] + "/chat/completions",
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        text = (data["choices"][0]["message"].get("content") or "").strip()
+        return {"text": text, "usage": data.get("usage")}
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return {"error": "DeepSeek API Key 无效（401）"}
+        if e.code == 402:
+            return {"error": "DeepSeek 账户余额不足（402）"}
+        if e.code == 429:
+            return {"error": "DeepSeek 触发限流（429），请稍后再问"}
+        try:
+            detail = e.read().decode("utf-8", "replace")[:200]
+        except Exception:
+            detail = ""
+        return {"error": "DeepSeek HTTP %s %s" % (e.code, detail)}
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
+
+
+def _chat_ollama(messages, cfg, timeout, max_tokens, temperature):
+    body = {
+        "model": cfg["ollama_model"],
+        "messages": messages,
+        "stream": False,
+        "options": {"temperature": temperature, "num_ctx": 4096,
+                    "num_predict": max_tokens},
+    }
+    req = urllib.request.Request(
+        cfg["ollama_url"] + "/api/chat",
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        text = (data.get("message", {}).get("content") or "").strip()
+        return {"text": text}
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
+
+
+def chat(messages, timeout=None, max_tokens=700, temperature=0.4):
+    """自由问答（不强制 JSON）。给 chat.py 用。"""
+    cfg = _read_config()
+    if timeout is None:
+        try:
+            timeout = float(cfg.get("timeout") or 30)
+        except ValueError:
+            timeout = 30
+    p = cfg["provider"]
+    if p == "deepseek":
+        return _chat_deepseek(messages, cfg, timeout, max_tokens, temperature)
+    if p == "ollama":
+        return _chat_ollama(messages, cfg, timeout, max_tokens, temperature)
+    return {"error": "模型通道已关闭"}
+
+
 # ---------------------------------------------------------------- 对外
 def ask(text, current=None, timeout=None):
     """抽取这一句话里的字段。失败返回 {'error': ...}，调用方退回规则通道。"""

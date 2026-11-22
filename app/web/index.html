@@ -1135,33 +1135,49 @@ async function send(){
     state.slots = r.slots || {};
     syncForm(state.slots);
 
-    if(r.added && r.added.length){
-      const LAB = {section:"断面型式",b:"底宽",m:"边坡",n:"糙率",i:"底坡",Q:"流量",h0:"水深",L:"渠长",downstream:"渠末条件",zw:"水位"};
-      const shown = r.added.map(k=>{
-        let v = state.slots[k];
-        if(k==="section") v = v==="rectangular"?"矩形":"梯形";
-        if(k==="downstream") v = {free_outfall:"自由跌水",given_h:"给定水深",given_zw:"给定水位",normal_depth:"正常水深"}[v]||v;
-        return (LAB[k]||k)+"="+v;
-      });
-      bubble("已记录："+shown.join("、"),"ai","助手");
-      // 表单底部同步提示：让"你说的已经进表了"有明确文字反馈
+    const LAB = {section:"断面型式",b:"底宽",m:"边坡",n:"糙率",i:"底坡",Q:"流量",
+                 h0:"水深",L:"渠长",downstream:"渠末条件",zw:"水位"};
+    const shown = (r.added||[]).map(k=>{
+      let v = state.slots[k];
+      if(k==="section") v = v==="rectangular"?"矩形":"梯形";
+      if(k==="downstream") v = {free_outfall:"自由跌水",given_h:"给定水深",
+                                given_zw:"给定水位",normal_depth:"正常水深"}[v]||v;
+      return (LAB[k]||k)+"="+v;
+    });
+
+    /* 1) 提问 / 闲聊：直接回答，不追问参数 */
+    if(r.act === "answer"){
+      if(r.reply) bubble(r.reply, "ai", "助手");
+      if(shown.length){
+        bubble("同时记下了：" + shown.join("、"), "ai", "助手");
+        $("#formHint").textContent = "已按对话同步：" + shown.join("  ");
+        $("#formHint").className = "hint ok";
+      }
+      if(r.ready && shown.length) await calc();
+      return;
+    }
+
+    /* 2) 记下了参数 */
+    if(shown.length){
+      bubble("已记录：" + shown.join("、"), "ai", "助手");
       $("#formHint").textContent = "已按对话同步：" + shown.join("  ");
       $("#formHint").className = "hint ok";
-    }else if(!r.ready){
-      bubble("这句话里没有识别出新参数。","ai","助手");
     }
-    if(r.legal && r.legal.verdict==="reject"){
-      bubble("这个输入不能计算："+((r.legal.reasons||[]).join("；")),"ai","助手");
+
+    /* 3) 越界 / 主题不符：说清楚为什么，不追问 */
+    if(r.legal && r.legal.verdict === "reject"){
+      bubble("这个不能算：" + ((r.legal.reasons||[]).join("；")), "ai", "助手");
       return;
     }
-    if(!r.ready){
-      const LAB = {section:"断面型式",b:"底宽",m:"边坡",n:"糙率",i:"底坡",Q:"流量",h0:"控制水深",L:"渠长",zw:"下游水位"};
-      bubble("还缺："+(r.missing||[]).map(k=>LAB[k]||k).join("、"),"ai","助手");
-      return;
+
+    /* 4) 参数齐了 → 计算 */
+    if(r.ready){ await calc(); return; }
+
+    /* 5) 还不齐：只在用户明确说"算"时提示一次，否则不打扰 */
+    if(r.act === "record_ask"){
+      bubble("还差 " + (r.missing||[]).map(k=>LAB[k]||k).join("、") +
+             " 就能算；补齐后自动出图，也可以点「载入示例」。", "ai", "助手");
     }
-    await calc();
-    const types = state.result ? state.result.segments.map(s=>s.curve_type).join(" → ") : "";
-    if(types) bubble("计算完成，型序列："+types,"ai","助手");
   }catch(e){ wait.remove(); bubble("请求失败："+e.message,"ai","助手"); }
   finally{ $("#sendBtn").disabled=false; $("#chatInput").focus(); }
 }
@@ -1289,11 +1305,10 @@ function bindCanvas(){
 }
 
 const CHIPS = [
-  "矩形渠 底宽5米 糙率0.015 坡度千分之一 流量10个方 水深2米 长600米",
-  "改成梯形 边坡1比1.5",
-  "水深改成1米",
-  "渠末改成自由跌水",
+  "你会什么？",
   "这个工况为什么是M1？",
+  "什么是临界水深？",
+  "水跃是怎么判定的？",
   "帮我算个水面线"
 ];
 
@@ -1321,7 +1336,7 @@ function loadDemo(notify){
 async function init(){
   $("#chips").innerHTML =
     '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
-    CHIPS.slice(1, 4).map(c=>'<span class="chip">'+c+'</span>').join("");
+    CHIPS.slice(0, 3).map(c=>'<span class="chip">'+c+'</span>').join("");
   $("#chipDemo").onclick = ()=>loadDemo(true);
   $("#chips").querySelectorAll(".chip").forEach(el=>{
     if(el.id === "chipDemo") return;

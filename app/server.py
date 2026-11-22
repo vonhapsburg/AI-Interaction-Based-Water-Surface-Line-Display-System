@@ -8,6 +8,7 @@
 """
 import json
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -23,10 +24,10 @@ DB_PATH = os.path.join(ROOT, "runs.db")
 sys.path.insert(0, ROOT)
 
 from agent.merge import merge, turn, missing_of   # noqa: E402
-from agent import llm, adapter, legality          # noqa: E402
+from agent import llm, adapter, legality, chat as chatmod   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-STATE = {"slots": {}, "texts": [], "raws": []}
+STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
 MAX_PTS = 1200
@@ -354,26 +355,57 @@ class Handler(SimpleHTTPRequestHandler):
                 STATE["slots"] = {}
                 STATE["texts"] = []
                 STATE["raws"] = []
+                STATE["chat"] = []
                 CACHE["params"] = CACHE["result"] = None
             return self._json({"ok": True, "slots": {}, "missing": missing_of({})})
 
-        # ---- 一句话 → 更新会话状态 ----
+        # ---- 一句话 → 更新会话状态 / 或直接回答问题 ----
         if path == "/api/turn":
             text = (body.get("text") or "").strip()
             if not text:
                 return self._json({"error": "text 为空"}, 400)
             try:
+                is_q = chatmod.looks_like_question(text)
                 with LOCK:
-                    r = turn(text, STATE["slots"], use_llm=body.get("use_llm", True))
-                    STATE["texts"].append(r["normalized"])
-                    STATE["raws"].append(text)
-                    ctx = _ctx()
-                    rawctx = _raw()
-                a, legal, rows = _evaluate(ctx, STATE["slots"], rawctx)
+                    # 提问时不调用"抽取器"刷参数，只做一次规则解析顺手捎带
+                    r = turn(text, STATE["slots"], use_llm=not is_q)
+                    if r["added"]:
+                        STATE["texts"].append(r["normalized"])
+                        STATE["raws"].append(text)
+                    slots = dict(STATE["slots"])
+                    ctx = _ctx() or r["normalized"]
+                    rawctx = _raw() or text
+
+                a, legal, rows = _evaluate(ctx, slots, rawctx)
                 ready = (a["params"] is not None) and legal["verdict"] != "reject"
+                added = r["added"]
+                reply = ""
+                channels = list(r["channels"])
+
+                if is_q or not added:
+                    # 对话通道：能聊、能解释，不追问
+                    rep = chatmod.answer(text, slots, CACHE["result"], STATE["chat"])
+                    if "text" in rep and rep["text"]:
+                        reply = rep["text"]
+                        channels.append("chat")
+                    else:
+                        reply = "（回答失败：%s）" % rep.get("error", "未知原因")
+                    with LOCK:
+                        STATE["chat"].append({"role": "user", "content": text})
+                        STATE["chat"].append({"role": "assistant", "content": reply})
+                        STATE["chat"] = STATE["chat"][-12:]
+                    act = "answer"
+                elif ready:
+                    act = "compute"
+                else:
+                    # 记下了参数但还不齐：不主动追问，只在用户明确要算时提示一次
+                    act = "record_ask" if re.search(
+                        r"帮我算|计算|算一下|算个|出图", text) else "record"
+
                 return self._json({
-                    "channels": r["channels"], "added": r["added"], "delta": r["delta"],
-                    "slots": STATE["slots"], "normalized": r["normalized"],
+                    "act": act, "reply": reply,
+                    "channels": channels, "added": added, "delta": r["delta"],
+                    "slots": slots, "normalized": r["normalized"],
                     "missing": a["missing"], "rows": rows, "legal": legal,
                     "warnings": r["warnings"] + a["warnings"],
                     "ready": ready,
