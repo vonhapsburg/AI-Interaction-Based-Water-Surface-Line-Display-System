@@ -412,6 +412,34 @@ class Handler(SimpleHTTPRequestHandler):
                 hyp_result = None
                 hyp_slots = None
                 hyp_curves = None
+
+                # 「给我一个水跃/水跌/M1 的样例」优先于参数抽取：
+                # 这类请求由生成器出参数并当场验证，不允许被当成"记录参数"。
+                gen_kind = _generate_intent(text)
+                gen_item = None
+                if gen_kind:
+                    try:
+                        gen_item = generator.random_combo(gen_kind)
+                    except Exception:
+                        gen_item = None
+                if gen_item is not None:
+                    reply = generator.describe(gen_item)
+                    with LOCK:
+                        STATE["chat"].append({"role": "user", "content": text})
+                        STATE["chat"].append({"role": "assistant", "content": reply})
+                        STATE["chat"] = STATE["chat"][-12:]
+                        slots_now = dict(STATE["slots"])
+                    a, legal, rows = _evaluate(_ctx() or text, slots_now, _raw() or text)
+                    return self._json({
+                        "act": "answer", "reply": reply,
+                        "hypothesis": {"slots": gen_item["params"],
+                                       "curves": list(gen_item.get("types") or [])},
+                        "channels": ["generator"], "added": [], "delta": {},
+                        "slots": slots_now, "normalized": text,
+                        "missing": a["missing"], "rows": rows, "legal": legal,
+                        "warnings": [], "ready": False,
+                    })
+
                 with LOCK:
                     # 提问走"沙盒"：在会话槽位的副本上推演，绝不改动真实参数
                     work = copy.deepcopy(STATE["slots"]) if is_q else STATE["slots"]
@@ -446,38 +474,19 @@ class Handler(SimpleHTTPRequestHandler):
                 channels = list(r["channels"])
 
                 if is_q or not added:
-                    # 先看是不是"给我生成一个……样例"这类请求：由搜索器出参数，
-                    # 模型不参与数值，只把结果讲清楚。
-                    gen_item = None
-                    gen_kind = _generate_intent(text)
-                    if gen_kind:
-                        try:
-                            gen_item = generator.random_combo(gen_kind)
-                        except Exception:
-                            gen_item = None
-                    if gen_item is not None:
-                        reply = generator.describe(gen_item)
-                        hyp_slots = gen_item["params"]
-                        hyp_curves = list(gen_item.get("types") or [])
-                        channels.append("generator")
-                        with LOCK:
-                            STATE["chat"].append({"role": "user", "content": text})
-                            STATE["chat"].append({"role": "assistant", "content": reply})
-                            STATE["chat"] = STATE["chat"][-12:]
+                    # 对话通道：能聊、能解释，不追问
+                    rep = chatmod.answer(text, slots,
+                                         hyp_result if hyp_result is not None else CACHE["result"],
+                                         STATE["chat"],
+                                         hypothetical=hyp_result is not None)
+                    if "text" in rep and rep["text"]:
+                        reply = rep["text"]
+                        channels.append("chat")
                     else:
-                        # 对话通道：能聊、能解释，不追问
-                        rep = chatmod.answer(text, slots,
-                                             hyp_result if hyp_result is not None else CACHE["result"],
-                                             STATE["chat"],
-                                             hypothetical=hyp_result is not None)
-                        if "text" in rep and rep["text"]:
-                            reply = rep["text"]
-                            channels.append("chat")
-                        else:
-                            reply = "（回答失败：%s）" % rep.get("error", "未知原因")
-                        with LOCK:
-                            STATE["chat"].append({"role": "user", "content": text})
-                            STATE["chat"].append({"role": "assistant", "content": reply})
+                        reply = "（回答失败：%s）" % rep.get("error", "未知原因")
+                    with LOCK:
+                        STATE["chat"].append({"role": "user", "content": text})
+                        STATE["chat"].append({"role": "assistant", "content": reply})
                         STATE["chat"] = STATE["chat"][-12:]
                     act = "answer"
                 elif ready:
