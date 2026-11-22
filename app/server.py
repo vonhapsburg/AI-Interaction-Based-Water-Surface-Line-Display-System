@@ -25,7 +25,7 @@ DB_PATH = os.path.join(ROOT, "runs.db")
 sys.path.insert(0, ROOT)
 
 from agent.merge import merge, turn, missing_of   # noqa: E402
-from agent import llm, adapter, legality, chat as chatmod   # noqa: E402
+from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
@@ -121,6 +121,33 @@ PRESET_LABELS = {
 def _preset_list():
     return [{"key": k, "name": PRESET_LABELS.get(k, k)}
             for k in gvf_core.PRESETS]
+
+
+_TYPE_CODES = ("M1", "M2", "M3", "S1", "S2", "S3", "C1", "C3",
+               "H2", "H3", "A2", "A3")
+
+
+def _generate_intent(text):
+    """识别「给我一个水跃样例 / 来个 M2 的例子」这类请求。"""
+    t = text or ""
+    if not re.search(r"样例|例子|示例|案例|生成|来一个|来一组|给我.*个|出一|演示|随机", t):
+        return None
+    m = re.search(r"(M1|M2|M3|S1|S2|S3|C1|C3|H2|H3|A2|A3)", t)
+    if m:
+        return m.group(1)
+    if re.search(r"水跃", t):
+        return "jump"
+    if re.search(r"水跌|跌水", t):
+        return "outfall"
+    if re.search(r"缓坡.*陡坡|缓.*转.*陡", t):
+        return "combo_mild_steep"
+    if re.search(r"陡坡.*缓坡|陡.*转.*缓", t):
+        return "combo_steep_mild"
+    if re.search(r"缓坡.*缓坡", t):
+        return "combo_mild_mild"
+    if re.search(r"陡坡.*陡坡", t):
+        return "combo_steep_steep"
+    return None
 
 
 def _params_to_form(pr):
@@ -297,15 +324,30 @@ class Handler(SimpleHTTPRequestHandler):
                                "session": len(STATE["slots"])})
 
         if u.path == "/api/presets":
-            return self._json({"presets": _preset_list()})
+            groups = generator.grouped()
+            legacy = _preset_list()
+            return self._json({"presets": legacy, "groups": groups})
 
         if u.path == "/api/preset":
             qs = parse_qs(u.query)
-            name = qs.get("name", [""])[0]
+            name = qs.get("key", qs.get("name", [""]))[0]
+            # 先查预设库（12 型 / 组合 / 现象），再回落到内核 PRESETS
+            p = generator.get(name)
+            if p is not None:
+                return self._json({"name": name, "params": p})
             if name not in gvf_core.PRESETS:
                 return self._json({"error": "没有这个预设算例"}, 404)
             pr = gvf_core.PRESETS[name]()
             return self._json({"name": name, "params": _params_to_form(pr)})
+
+        if u.path == "/api/generate":
+            qs = parse_qs(u.query)
+            kind = qs.get("kind", ["jump"])[0]
+            item = generator.random_combo(kind)
+            if item is None:
+                return self._json({"error": "没能生成符合条件的算例，请换个说法"}, 404)
+            return self._json({"ok": True, "item": item,
+                               "reply": generator.describe(item)})
 
         if u.path == "/api/state":
             a, legal, rows = _evaluate(_ctx(), STATE["slots"], _raw())
@@ -369,6 +411,7 @@ class Handler(SimpleHTTPRequestHandler):
                 is_q = chatmod.looks_like_question(text)
                 hyp_result = None
                 hyp_slots = None
+                hyp_curves = None
                 with LOCK:
                     # 提问走"沙盒"：在会话槽位的副本上推演，绝不改动真实参数
                     work = copy.deepcopy(STATE["slots"]) if is_q else STATE["slots"]
@@ -392,8 +435,9 @@ class Handler(SimpleHTTPRequestHandler):
                                             "normalized": r["normalized"]})
                         if a2["params"] is not None:
                             hyp_result = gvf_core.solve(a2["params"])
+                            hyp_curves = [s.curve_type for s in hyp_result.segments]
                     except Exception:
-                        hyp_result, hyp_slots = None, None
+                        hyp_result, hyp_slots, hyp_curves = None, None, None
 
                 a, legal, rows = _evaluate(ctx, slots, rawctx)
                 ready = (a["params"] is not None) and legal["verdict"] != "reject"
@@ -402,19 +446,38 @@ class Handler(SimpleHTTPRequestHandler):
                 channels = list(r["channels"])
 
                 if is_q or not added:
-                    # 对话通道：能聊、能解释，不追问
-                    rep = chatmod.answer(text, slots,
-                                         hyp_result if hyp_result is not None else CACHE["result"],
-                                         STATE["chat"],
-                                         hypothetical=hyp_result is not None)
-                    if "text" in rep and rep["text"]:
-                        reply = rep["text"]
-                        channels.append("chat")
+                    # 先看是不是"给我生成一个……样例"这类请求：由搜索器出参数，
+                    # 模型不参与数值，只把结果讲清楚。
+                    gen_item = None
+                    gen_kind = _generate_intent(text)
+                    if gen_kind:
+                        try:
+                            gen_item = generator.random_combo(gen_kind)
+                        except Exception:
+                            gen_item = None
+                    if gen_item is not None:
+                        reply = generator.describe(gen_item)
+                        hyp_slots = gen_item["params"]
+                        hyp_curves = list(gen_item.get("types") or [])
+                        channels.append("generator")
+                        with LOCK:
+                            STATE["chat"].append({"role": "user", "content": text})
+                            STATE["chat"].append({"role": "assistant", "content": reply})
+                            STATE["chat"] = STATE["chat"][-12:]
                     else:
-                        reply = "（回答失败：%s）" % rep.get("error", "未知原因")
-                    with LOCK:
-                        STATE["chat"].append({"role": "user", "content": text})
-                        STATE["chat"].append({"role": "assistant", "content": reply})
+                        # 对话通道：能聊、能解释，不追问
+                        rep = chatmod.answer(text, slots,
+                                             hyp_result if hyp_result is not None else CACHE["result"],
+                                             STATE["chat"],
+                                             hypothetical=hyp_result is not None)
+                        if "text" in rep and rep["text"]:
+                            reply = rep["text"]
+                            channels.append("chat")
+                        else:
+                            reply = "（回答失败：%s）" % rep.get("error", "未知原因")
+                        with LOCK:
+                            STATE["chat"].append({"role": "user", "content": text})
+                            STATE["chat"].append({"role": "assistant", "content": reply})
                         STATE["chat"] = STATE["chat"][-12:]
                     act = "answer"
                 elif ready:
@@ -426,9 +489,8 @@ class Handler(SimpleHTTPRequestHandler):
 
                 return self._json({
                     "act": act, "reply": reply,
-                    "hypothesis": ({"slots": hyp_slots,
-                                    "curves": [s.curve_type for s in hyp_result.segments]}
-                                   if hyp_result is not None else None),
+                    "hypothesis": ({"slots": hyp_slots, "curves": hyp_curves}
+                                   if hyp_slots else None),
                     "channels": channels, "added": added, "delta": r["delta"],
                     "slots": slots, "normalized": r["normalized"],
                     "missing": a["missing"], "rows": rows, "legal": legal,

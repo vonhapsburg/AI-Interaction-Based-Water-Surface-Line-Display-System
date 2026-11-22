@@ -1,0 +1,831 @@
+{
+ "generated_by": "tools/build_catalog.py",
+ "note": "每条都经 gvf_core.solve() 验证",
+ "items": [
+  {
+   "key": "type_M1",
+   "group": "12 型",
+   "label": "M1 · 缓坡Ⅰ区",
+   "desc": "单段「M1」，M1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.5736236352396493,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_M2",
+   "group": "12 型",
+   "label": "M2 · 缓坡Ⅱ区",
+   "desc": "单段「M2」，M2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.9327748088647015,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_M3",
+   "group": "12 型",
+   "label": "M3 · 缓坡Ⅲ区",
+   "desc": "单段「M3 → M2」，M3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "M3",
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_S1",
+   "group": "12 型",
+   "label": "S1 · 陡坡Ⅰ区",
+   "desc": "单段「S2 → S1」，S1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.4830654708307356,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2",
+    "S1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_S2",
+   "group": "12 型",
+   "label": "S2 · 陡坡Ⅱ区",
+   "desc": "单段「S2」，S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.5806082026895759,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_S3",
+   "group": "12 型",
+   "label": "S3 · 陡坡Ⅲ区",
+   "desc": "单段「S3」，S3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.20984183498189202
+   },
+   "expect_types": [
+    "S3"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_C1",
+   "group": "12 型",
+   "label": "C1 · 临界坡Ⅰ区",
+   "desc": "单段「C1」，C1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.003447904966425708,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.4830654708307356,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.003447904966425708,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.7415,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_C3",
+   "group": "12 型",
+   "label": "C3 · 临界坡Ⅲ区",
+   "desc": "单段「C3 → C1」，C3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.003447904966425708,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.37076636770766236
+   },
+   "expect_types": [
+    "C3",
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.003447904966425708,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.7415,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_H2",
+   "group": "12 型",
+   "label": "H2 · 平坡Ⅱ区",
+   "desc": "单段「H2」，H2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.7415327354153678,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_H3",
+   "group": "12 型",
+   "label": "H3 · 平坡Ⅲ区",
+   "desc": "单段「H3 → H2」，H3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "H3",
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_A2",
+   "group": "12 型",
+   "label": "A2 · 负坡Ⅱ区",
+   "desc": "单段「A2」，A2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.7415327354153678,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "type_A3",
+   "group": "12 型",
+   "label": "A3 · 负坡Ⅲ区",
+   "desc": "单段「A3 → A2」，A3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 0.0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3707663677076839
+   },
+   "expect_types": [
+    "A3",
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "combo_mild_mild",
+   "group": "坡度组合",
+   "label": "缓坡 → 缓坡",
+   "desc": "两种缓坡拼接，M1 → M1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.0006,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 2.0,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M1",
+    "M1"
+   ],
+   "reaches": [
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 400.0,
+     "i": 0.0006,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.341,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "combo_steep_steep",
+   "group": "坡度组合",
+   "label": "陡坡 → 陡坡",
+   "desc": "S3 → S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 300,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 300,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.35
+   },
+   "expect_types": [
+    "S3",
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 300.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 300.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3142,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "combo_mild_steep",
+   "group": "坡度组合",
+   "label": "缓坡 → 陡坡（坡折临界）",
+   "desc": "M2 → S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 300,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 300,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2",
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 300.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 300.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.4197,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "combo_steep_mild",
+   "group": "坡度组合",
+   "label": "陡坡 → 缓坡（含水跃）",
+   "desc": "S3 → M3 → M2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 200,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.0,
+    "upstream": "given_h",
+    "up_h": 0.3
+   },
+   "expect_types": [
+    "S3",
+    "M3",
+    "M2"
+   ],
+   "expect_jump": true,
+   "reaches": [
+    {
+     "L": 200.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3142,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "case_outfall",
+   "group": "典型现象",
+   "label": "水跌 · 渠末自由跌水",
+   "desc": "M2，渠末水跌",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 600,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2"
+   ],
+   "expect_transition": "outfall",
+   "reaches": [
+    {
+     "L": 600.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "case_jump",
+   "group": "典型现象",
+   "label": "水跃 · 陡转缓",
+   "desc": "S3 → M3 → M2，跃位 189.0 m",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     },
+     {
+      "L": 450,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 0,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.1,
+    "upstream": "given_h",
+    "up_h": 0.3
+   },
+   "expect_types": [
+    "S3",
+    "M3",
+    "M2"
+   ],
+   "expect_transition": "jump",
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3142,
+     "hc": 0.7415,
+     "ic": 0.003448
+    },
+    {
+     "L": 450.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 0.0,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.124,
+     "hc": 0.7415,
+     "ic": 0.003448
+    }
+   ]
+  }
+ ]
+}

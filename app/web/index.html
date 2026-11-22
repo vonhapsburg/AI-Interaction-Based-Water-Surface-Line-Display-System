@@ -142,6 +142,17 @@
     100%{background:#fff;border-color:var(--line);box-shadow:none;}
   }
   input.flash,select.flash{animation:flashBg 1.4s ease-out;}
+  /* 示例算例面板 */
+  .pgroup{margin-bottom:9px;}
+  .pgroup-h{font-size:11px;color:var(--faint);letter-spacing:.04em;margin:0 0 5px;}
+  .pchips{display:flex;flex-wrap:wrap;gap:5px;}
+  .pchip{
+    font-size:12px;color:var(--accent2);background:#f1f6fb;border:1px solid #d9e6f2;
+    border-radius:6px;padding:4px 9px;cursor:pointer;line-height:1.4;
+  }
+  .pchip:hover{background:#e6f0f9;border-color:#b9d4e8;}
+  .pchip.gen{background:#fdf6ec;border-color:#eedcbe;color:#8a5a12;}
+  .pchip.gen:hover{background:#fbf0de;}
   /* 分段一览（结果卡） */
   table.reachsum{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
   table.reachsum th{
@@ -260,6 +271,13 @@
     </section>
 
     <section class="card">
+      <div class="card-h">示例算例 <span class="tag">点一下直接算</span></div>
+      <div class="card-b" id="presetPanel" style="max-height:230px;overflow:auto;">
+        <div class="empty">载入中…</div>
+      </div>
+    </section>
+
+    <section class="card">
       <div class="card-h">参数表单
         <span class="syncbadge" id="syncBadge"></span>
         <span class="tag">可手改，改后需重新计算</span>
@@ -305,10 +323,6 @@
         </div>
 
         <div class="grid2" style="margin-top:9px;">
-          <div class="field">
-            <label>预设算例</label>
-            <select id="fPreset"><option value="">— 选择 —</option></select>
-          </div>
           <div class="field"><label>跃长公式</label>
             <select id="fJump">
               <option value="wu">吴持恭 L=6.9(h₂−h₁)</option>
@@ -1237,6 +1251,58 @@ async function applyHypothesis(slots, btn){
   }
 }
 
+/* ---------------- 示例算例面板 ---------------- */
+async function loadPresets(){
+  try{
+    const j = await (await fetch('/api/presets')).json();
+    const groups = j.groups || [];
+    if(!groups.length){ $("#presetPanel").innerHTML = '<div class="empty">暂无示例</div>'; return; }
+    let html = '';
+    groups.forEach(g=>{
+      html += '<div class="pgroup"><div class="pgroup-h">'+g.name+'</div><div class="pchips">' +
+        g.items.map(it=>'<span class="pchip" data-key="'+it.key+'" title="'+(it.desc||'')+'">'+
+                        it.label+'</span>').join("") +
+        '</div></div>';
+    });
+    html += '<div class="pgroup"><div class="pgroup-h">随机生成（每次不同，均经内核验证）</div><div class="pchips">' +
+      '<span class="pchip gen" data-gen="jump">🎲 随机水跃样例</span>' +
+      '<span class="pchip gen" data-gen="outfall">🎲 随机水跌样例</span>' +
+      '</div></div>';
+    $("#presetPanel").innerHTML = html;
+
+    $("#presetPanel").querySelectorAll('.pchip[data-key]').forEach(el=>{
+      el.onclick = async ()=>{
+        const key = el.dataset.key;
+        el.style.opacity = "0.5";
+        try{
+          const r = await (await fetch('/api/preset?key='+encodeURIComponent(key))).json();
+          if(r.params){ await applyHypothesis(r.params, null); bubble("已载入示例："+el.textContent,"ai","助手"); }
+          else bubble("载入失败："+(r.error||"未知原因"),"ai","助手");
+        }catch(e){ bubble("载入失败："+e.message,"ai","助手"); }
+        finally{ el.style.opacity = "1"; }
+      };
+    });
+    $("#presetPanel").querySelectorAll('.pchip[data-gen]').forEach(el=>{
+      el.onclick = async ()=>{
+        const kind = el.dataset.gen;
+        el.style.opacity = "0.5";
+        try{
+          const r = await (await fetch('/api/generate?kind='+encodeURIComponent(kind))).json();
+          if(r.item){
+            bubble(r.reply || "已生成一组参数。","ai","助手");
+            await applyHypothesis(r.item.params, null);
+          }else{
+            bubble("没能生成符合条件的算例，请再试一次。","ai","助手");
+          }
+        }catch(e){ bubble("生成失败："+e.message,"ai","助手"); }
+        finally{ el.style.opacity = "1"; }
+      };
+    });
+  }catch(e){
+    $("#presetPanel").innerHTML = '<div class="empty">示例加载失败</div>';
+  }
+}
+
 /* ---------------- 导出 ---------------- */
 function exportCSV(){
   const R = state.result;
@@ -1306,20 +1372,6 @@ function bindForm(){
       markDirty();
       calc();
     });
-  });
-
-  $("#fPreset").addEventListener("change", async e=>{
-    const name = e.target.value;
-    if(!name) return;
-    try{
-      const j = await (await fetch("/api/preset?name="+encodeURIComponent(name))).json();
-      if(j.params){
-        syncForm(j.params);
-        markDirty();
-        calc();
-        bubble("已加载预设算例："+j.name,"ai","助手");
-      }
-    }catch(err){}
   });
 }
 
@@ -1436,11 +1488,7 @@ async function init(){
     $("#aiStatus").innerHTML = '<i class="dot'+(ok?"":" off")+'"></i>' + label;
   }catch(e){ $("#aiStatus").innerHTML='<i class="dot off"></i>AI 状态未知'; }
 
-  try{
-    const p = await (await fetch("/api/presets")).json();
-    $("#fPreset").innerHTML = '<option value="">— 选择 —</option>' +
-      (p.presets||[]).map(x=>'<option value="'+x.key+'">'+x.name+'</option>').join("");
-  }catch(e){}
+  await loadPresets();
 
   try{
     const s = await (await fetch("/api/state")).json();
