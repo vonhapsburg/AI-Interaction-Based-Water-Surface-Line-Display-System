@@ -278,6 +278,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         if u.path == "/api/health":
             return self._json({"ok": True, "llm": llm.health(),
+                               "llm_info": llm.describe(),
                                "core": gvf_core.SCHEMA_VERSION,
                                "history": history_ok(),
                                "session": len(STATE["slots"])})
@@ -520,7 +521,15 @@ if __name__ == "__main__":
     print("内核：gvf_core %s" % gvf_core.SCHEMA_VERSION)
     print("会话：服务端槽位表（参数记忆在进程内，可清空）")
     print("历史：%s" % (DB_PATH if history_ok() else "不可写（计算不受影响，历史功能关闭）"))
-    print("Ollama：%s" % ("在线" if llm.health() else "未连接（规则解析仍可用，计算不受影响）"))
+    info = llm.describe()
+    if info["provider"] == "none":
+        print("模型通道：已关闭（仅规则解析）")
+    elif info["provider"] == "deepseek":
+        print("模型通道：DeepSeek %s（%s）" % (info["model"],
+              "已配置 Key" if info["ready"] else "未配置 Key，将只用规则解析"))
+    else:
+        print("模型通道：本地 Ollama %s（%s）" % (info["model"],
+              "在线" if info["ready"] else "未连接，将只用规则解析"))
     print("=" * 56)
     print("正在预热模型（约 10 秒，未装模型时自动跳过）...")
     llm.preheat()

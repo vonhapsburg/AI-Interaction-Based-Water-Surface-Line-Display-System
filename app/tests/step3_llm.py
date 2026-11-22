@@ -36,9 +36,17 @@ FIELDS = ["b", "m", "n", "i", "Q", "h0", "L"]
 
 def main():
     lines = []
+    info = llm.describe()
+    if not llm.health():
+        msg = ("模型通道未就绪（provider=%s，%s），跳过本脚本。\n"
+               "配置方式见 config.example.ini：填 api_key 或设 DEEPSEEK_API_KEY。"
+               % (info["provider"], info.get("note") or "未连接"))
+        print(msg)
+        open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "step3-llm.txt"),
+             "w", encoding="utf-8").write(msg + "\n")
+        return
     ok_all = True
-    lines.append("模型：%s    地址：%s" % (llm.MODEL, llm.OLLAMA_URL))
-    lines.append("health：%s" % llm.health())
+    lines.append("模型通道：%s / %s" % (info["provider"], info["model"]))
     lines.append("")
 
     for cid, text, expect, note in CASES:

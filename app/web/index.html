@@ -1298,9 +1298,18 @@ async function init(){
   /* 健康检查 + 预设列表 + 历史 + 会话状态 */
   try{
     const h = await (await fetch("/api/health")).json();
-    const ok = h.llm;
-    $("#aiStatus").innerHTML = '<i class="dot'+(ok?"":" off")+'"></i>'+
-      (ok ? "AI 在线 · 本地 qwen3:4b" : "AI 离线 · 仅规则解析");
+    const info = h.llm_info || {};
+    const ok = !!h.llm;
+    let label;
+    if(info.provider === "deepseek"){
+      label = ok ? ("AI 在线 · DeepSeek " + (info.model||"")) : "AI 未就绪 · 仅规则解析";
+    }else if(info.provider === "ollama"){
+      label = ok ? ("本地模型 · " + (info.model||"")) : "本地模型未启动 · 仅规则解析";
+    }else{
+      label = "AI 关闭 · 仅规则解析";
+    }
+    if(!ok && info.note) label = info.note;
+    $("#aiStatus").innerHTML = '<i class="dot'+(ok?"":" off")+'"></i>' + label;
   }catch(e){ $("#aiStatus").innerHTML='<i class="dot off"></i>AI 状态未知'; }
 
   try{

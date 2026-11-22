@@ -40,6 +40,14 @@ FIELDS = ("b", "m", "n", "i", "Q", "h0", "L")
 
 def main():
     lines = []
+    info = llm.describe()
+    if not llm.health():
+        msg = ("模型通道未就绪（provider=%s，%s），跳过本脚本。"
+               % (info["provider"], info.get("note") or "未连接"))
+        print(msg)
+        open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "step9-robust.txt"),
+             "w", encoding="utf-8").write(msg + "\n")
+        return
     total_fields = hit_fields = 0
     used_llm = 0
 

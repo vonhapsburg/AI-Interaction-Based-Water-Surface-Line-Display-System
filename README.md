@@ -45,13 +45,31 @@ python server.py
 
 打开 <http://127.0.0.1:8000>。
 
-想启用自然语言对话，另需安装 [Ollama](https://ollama.com) 并准备模型：
+### 模型通道（三选一）
+
+自然语言解析需要一个语言模型；**计算本身不依赖它**，任何配置下计算、绘图、历史、导出都一致。
+
+**① DeepSeek API（默认）** —— 复制 `app/config.example.ini` 为 `app/config.ini`：
+
+```ini
+[llm]
+provider = deepseek
+model = deepseek-chat
+api_key = sk-你的密钥
+```
+
+或用环境变量 `DEEPSEEK_API_KEY`（优先级更高）。密钥只在服务端使用，不会进入前端；
+`config.ini` 已在 `.gitignore` 中。
+
+**② 本地 Ollama** —— 把 `provider` 改成 `ollama`，并准备模型：
 
 ```bash
 ollama pull qwen3:4b
 ```
 
-模型不可用时系统自动降级为规则解析，**计算、绘图、历史、导出全部不受影响**。
+**③ 关闭** —— `provider = none`，只用规则解析（毫秒级，覆盖常见句式）。
+
+未配置或调用失败时，系统自动退回规则通道并在界面提示，不会中断计算。
 
 ---
 
@@ -111,6 +129,7 @@ python tests/step10_legality.py     # 输入合法性 A~I + 内核联调（41 �
 python tests/step11_e2e.py          # 端到端验收（31 项，需先启动服务）
 python tests/step12_memory.py       # 会话记忆 + 历史回放（28 项）
 python tests/step13_form.py         # 表单 / 预设 / 多段 / 双模式（25 项）
+python tests/step14_llm.py          # 模型通道（DeepSeek/Ollama/关闭）与降级（11 项）
 ```
 
 绘图逻辑可用 DOM 桩在 Node 下验证：`node tests/dom_smoke.js`。

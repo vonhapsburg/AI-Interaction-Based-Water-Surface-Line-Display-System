@@ -79,12 +79,17 @@ def turn(text, state, use_llm=True):
     added = _apply(state, delta, warns, "规则")
     warns.extend(r["warnings"])
 
-    # 这一句规则什么也没抽到，且参数还不全 → 才叫模型（省时间）
+    # 规则没抽干净、仍缺字段时才叫模型。
+    # 早先的策略是"规则一个字段都没抽到才叫"，那会让半截句式（如「糙率按…」
+    # 没被正则覆盖）永远补不上，用户只能手动再补一句。
+    # DeepSeek 一次约 0.8 秒，可以放宽：长句里只要还缺字段就问一次模型；
+    # 短句（「底宽5米」这类逐条输入）仍不叫，避免多轮时每句都发请求。
     missing = missing_of(state)
-    if use_llm and not added and missing:
+    long_sentence = len((r.get("normalized") or "")) >= 16
+    if use_llm and missing and (not added or long_sentence):
         lr = llm.ask(text, current=state)
         if "error" in lr:
-            warns.append("本地模型不可用：%s" % lr["error"])
+            warns.append("模型通道不可用：%s；已退回规则解析" % lr["error"])
         else:
             chans.append("llm")
             added += _apply(state, lr["slots"], warns, "模型")
@@ -125,7 +130,7 @@ def merge(text, use_llm=True):
     if missing and use_llm:
         lr = llm.ask(text)
         if "error" in lr:
-            warnings.append("本地模型不可用：%s；已退回规则解析" % lr["error"])
+            warnings.append("模型通道不可用：%s；已退回规则解析" % lr["error"])
         else:
             channels.append("llm")
             llm_raw = lr.get("raw")

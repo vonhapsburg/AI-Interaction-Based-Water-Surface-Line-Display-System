@@ -21,15 +21,21 @@ echo    Natural-language calculation of 12-type GVF profiles
 echo  ==========================================================
 echo.
 
-if exist "%OLLAMA%\bin\ollama.exe" (
+rem Start the local model window ONLY when config.ini selects provider = ollama.
+rem With the DeepSeek API no local model is needed.
+set "USE_OLLAMA=0"
+if exist "%APP%\config.ini" findstr /i /c:"provider = ollama" "%APP%\config.ini" >nul 2>&1 && set "USE_OLLAMA=1"
+
+if "%USE_OLLAMA%"=="1" if exist "%OLLAMA%\bin\ollama.exe" (
   echo  [1/3] Starting local model service - a minimized window
   echo        will open. Please do not close it.
   start "Ollama model service" /min "%OLLAMA%\start-model.cmd"
   timeout /t 3 /nobreak >nul
 ) else (
-  echo  [1/3] No local model bundled.
-  echo        Rule-based parsing only: calculation, charting, history
-  echo        and CSV export still work normally.
+  echo  [1/3] No local model needed.
+  echo        Using the DeepSeek API when app\config.ini has an api_key;
+  echo        otherwise rule-based parsing only.
+  echo        Calculation, charting, history and CSV export always work.
 )
 
 echo  [2/3] Starting web service and opening the browser ...
