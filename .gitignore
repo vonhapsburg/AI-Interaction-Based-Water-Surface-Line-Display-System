@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行期生成
+runs.db
+.port
+server.log
+
+# 便携版的大体积依赖（不入库）
+runtime/
+model/
+*.zip
