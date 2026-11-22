@@ -87,6 +87,9 @@ def _read_config():
     with _lock:
         _cache["cfg"] = cfg
         _cache["mtime"] = mtime
+    # 换 Key / 改配置后，健康检查的缓存必须失效，否则会沿用旧的 401 结果
+    _health_cache["ok"] = None
+    _health_cache["ts"] = 0.0
     return cfg
 
 
