@@ -127,10 +127,19 @@ def _num(v):
         return str(v)
 
 
-def answer(text, slots=None, result=None, history=None, timeout=None):
-    """自由问答。返回 {'text': ...} 或 {'error': ...}。"""
+def answer(text, slots=None, result=None, history=None, timeout=None,
+           hypothetical=False):
+    """自由问答。返回 {'text': ...} 或 {'error': ...}。
+
+    hypothetical=True 表示 result 是按用户这句里的参数"试算"出来的，
+    当前参数并没有改动——回答里必须说清楚，否则用户会以为已经改好了。
+    """
     system = SYSTEM.replace("{slots}", _slots_brief(slots or {})) \
                    .replace("{result}", result_brief(result))
+    if hypothetical:
+        system += ("\n\n【重要】用户这句话里带了参数，下面这份结果是按这些参数"
+                   "试算出来的，当前参数并未改动。回答时要说明这是假设情形，"
+                   "并提示用户：想采用的话点「应用到表单」。")
     messages = [{"role": "system", "content": system}]
     for h in (history or [])[-6:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):

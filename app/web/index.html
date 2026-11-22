@@ -1165,6 +1165,17 @@ async function send(){
     /* 1) 提问 / 闲聊：直接回答，不追问参数 */
     if(r.act === "answer"){
       if(r.reply) bubble(r.reply, "ai", "助手");
+      /* 问句里带了参数 → 服务端做了"试算"，当前参数并没有改 */
+      if(r.hypothesis && r.hypothesis.slots){
+        const hb = bubble("这是一组试算参数（当前参数未改动）。","ai","助手");
+        const btn = document.createElement("button");
+        btn.className = "ghost";
+        btn.style.marginTop = "6px";
+        btn.textContent = "应用到表单并计算";
+        btn.onclick = ()=>applyHypothesis(r.hypothesis.slots, btn);
+        hb.appendChild(document.createElement("br"));
+        hb.appendChild(btn);
+      }
       if(shown.length){
         bubble("同时记下了：" + shown.join("、"), "ai", "助手");
         $("#formHint").textContent = "已按对话同步：" + shown.join("  ");
@@ -1198,6 +1209,32 @@ async function send(){
     }
   }catch(e){ wait.remove(); bubble("请求失败："+e.message,"ai","助手"); }
   finally{ $("#sendBtn").disabled=false; $("#chatInput").focus(); }
+}
+
+/* 把"试算出来的参数"落进表单并计算（用户点按钮才生效） */
+async function applyHypothesis(slots, btn){
+  if(btn){ btn.disabled = true; btn.textContent = "应用中…"; }
+  try{
+    const j = await (await fetch("/api/solve",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({overrides:slots})})).json();
+    renderLegal(j.legal);
+    if(!j.ok){
+      bubble("应用失败："+((j.legal&&j.legal.reasons||[]).join("；")||"参数不合法"),"ai","助手");
+      return;
+    }
+    state.result = j.result; state.slots = j.slots||{};
+    syncForm(state.slots);
+    const rs = state.result.reaches;
+    state.selectedX = rs[0].x_start + 0.55*(rs[rs.length-1].x_end - rs[0].x_start);
+    drawProfile(); drawSection(); renderResult(); loadHistory();
+    bubble("已应用，型序列：" + state.result.segments.map(s=>s.curve_type).join(" → "),
+           "ai","助手");
+  }catch(e){
+    bubble("应用失败："+e.message,"ai","助手");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "应用到表单并计算"; }
+  }
 }
 
 /* ---------------- 导出 ---------------- */

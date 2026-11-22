@@ -47,10 +47,31 @@ def _apply(state, delta, warns, src):
     return added
 
 
-def turn(text, state, use_llm=True):
+_CN_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
+
+
+def _target_reach(text, n):
+    """识别「第2段 / 末段 / 首段」这类指向。返回 0-based 下标或 None。"""
+    if n <= 0:
+        return None
+    m = re.search(r"第\s*([一二两三四1-4])\s*段", text or "")
+    if m:
+        idx = _CN_NUM.get(m.group(1))
+        if idx and 1 <= idx <= n:
+            return idx - 1
+        return None
+    if re.search(r"末段|最后一段|最末段", text or ""):
+        return n - 1
+    if re.search(r"首段", text or ""):
+        return 0
+    return None
+
+
+def turn(text, state, use_llm=True, restructure=True):
     """增量处理一句话：只把这一句里的字段并进 state，state 原地更新。
 
-    这是"记忆"的正确位置——参数表在 Python 进程里，模型只做本句抽取。
+    restructure=False 用于"提问"：只做参数推演，不允许改变渠道的分段结构
+    （否则一句"如果改成梯形…"就会把用户的两段渠道弹成单段）。
     """
     warns = []
     r = rule_parse(text)
@@ -66,33 +87,37 @@ def turn(text, state, use_llm=True):
     # 这句话如果是在**完整描述一条新渠道**（给了断面型式，或 b+i+L 齐了），
     # 就以对话为准，丢掉表单的多段设置；若只是"边坡改成2"这种局部修改，则保留。
     if state.get("reaches"):
-        # parser 会从「边坡」反推 section，所以不能把 section 当"显式断面型式"，
-        # 要看原句里到底有没有断面关键词。
         explicit_section = bool(re.search(r"矩形|梯形|长方形|方形渠", r.get("normalized") or ""))
-        full_desc = explicit_section or all(k in delta for k in ("b", "i", "L"))
+        full_desc = restructure and (explicit_section or all(k in delta for k in ("b", "i", "L")))
         if full_desc:
             state.pop("reaches", None)
             warns.append("这句话完整描述了渠道，已按单段重建（清除表单中的多段设置）")
         else:
-            # 局部修改：把这一句里的断面参数直接落到各段的 reaches 上，
-            # 这样参数表单能立刻反映对话里说的值，而不是只记在顶层槽位里。
+            # 局部修改：只改「被点到的那一段」；没点名就同步到全部段。
+            target = _target_reach(r.get("normalized") or "", len(state["reaches"]))
+            segs = [state["reaches"][target]] if target is not None else state["reaches"]
             per = {k: delta[k] for k in ("b", "n", "i", "m") if k in delta}
             if delta.get("section") == "rectangular":
                 per["m"] = 0.0
             if per:
-                for rr in state["reaches"]:
+                for rr in segs:
                     for k, v in per.items():
                         try:
                             rr[k] = float(v)
                         except (TypeError, ValueError):
                             pass
-                if len(state["reaches"]) == 1:
-                    warns.append("已同步到第1段：" + "、".join(
-                        "%s=%g" % (k, float(v)) for k, v in per.items()))
-                else:
-                    warns.append("已同步到全部 %d 段" % len(state["reaches"]))
+                where = ("第%d段" % (target + 1)) if target is not None else (
+                    "全部 %d 段" % len(state["reaches"]))
+                warns.append("已同步到%s：%s" % (where, "、".join(
+                    "%s=%g" % (k, float(v)) for k, v in per.items())))
             if "L" in delta:
-                if len(state["reaches"]) == 1:
+                if target is not None:
+                    try:
+                        state["reaches"][target]["L"] = float(delta["L"])
+                        warns.append("第%d段长度已改为 %g m" % (target + 1, float(delta["L"])))
+                    except (TypeError, ValueError):
+                        pass
+                elif len(state["reaches"]) == 1:
                     try:
                         state["reaches"][0]["L"] = float(delta["L"])
                         warns.append("第1段长度已改为 %g m" % float(delta["L"]))

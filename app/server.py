@@ -9,6 +9,7 @@
 import json
 import os
 import re
+import copy
 import sqlite3
 import sys
 import threading
@@ -366,15 +367,33 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "text 为空"}, 400)
             try:
                 is_q = chatmod.looks_like_question(text)
+                hyp_result = None
+                hyp_slots = None
                 with LOCK:
-                    # 提问时不调用"抽取器"刷参数，只做一次规则解析顺手捎带
-                    r = turn(text, STATE["slots"], use_llm=not is_q)
-                    if r["added"]:
-                        STATE["texts"].append(r["normalized"])
-                        STATE["raws"].append(text)
-                    slots = dict(STATE["slots"])
+                    # 提问走"沙盒"：在会话槽位的副本上推演，绝不改动真实参数
+                    work = copy.deepcopy(STATE["slots"]) if is_q else STATE["slots"]
+                    r = turn(text, work, use_llm=not is_q, restructure=not is_q)
+                    if is_q:
+                        slots = dict(STATE["slots"])
+                        if r["added"]:
+                            hyp_slots = work
+                    else:
+                        if r["added"]:
+                            STATE["texts"].append(r["normalized"])
+                            STATE["raws"].append(text)
+                        slots = dict(STATE["slots"])
                     ctx = _ctx() or r["normalized"]
                     rawctx = _raw() or text
+
+                # 问句里带了参数：按这组参数试算一次，用于回答"会怎样"
+                if is_q and r["added"]:
+                    try:
+                        a2 = adapter.build({"slots": hyp_slots, "warnings": [],
+                                            "normalized": r["normalized"]})
+                        if a2["params"] is not None:
+                            hyp_result = gvf_core.solve(a2["params"])
+                    except Exception:
+                        hyp_result, hyp_slots = None, None
 
                 a, legal, rows = _evaluate(ctx, slots, rawctx)
                 ready = (a["params"] is not None) and legal["verdict"] != "reject"
@@ -384,7 +403,10 @@ class Handler(SimpleHTTPRequestHandler):
 
                 if is_q or not added:
                     # 对话通道：能聊、能解释，不追问
-                    rep = chatmod.answer(text, slots, CACHE["result"], STATE["chat"])
+                    rep = chatmod.answer(text, slots,
+                                         hyp_result if hyp_result is not None else CACHE["result"],
+                                         STATE["chat"],
+                                         hypothetical=hyp_result is not None)
                     if "text" in rep and rep["text"]:
                         reply = rep["text"]
                         channels.append("chat")
@@ -404,6 +426,9 @@ class Handler(SimpleHTTPRequestHandler):
 
                 return self._json({
                     "act": act, "reply": reply,
+                    "hypothesis": ({"slots": hyp_slots,
+                                    "curves": [s.curve_type for s in hyp_result.segments]}
+                                   if hyp_result is not None else None),
                     "channels": channels, "added": added, "delta": r["delta"],
                     "slots": slots, "normalized": r["normalized"],
                     "missing": a["missing"], "rows": rows, "legal": legal,
