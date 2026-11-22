@@ -1,0 +1,531 @@
+# -*- coding: utf-8 -*-
+"""本地服务：会话槽位表 + 双通道解析 + 参数适配 + 合法性判定 + 内核计算 + 历史回放。
+
+记忆在服务端：
+  STATE["slots"]  当前累计参数表（Python 进程内，模型不承担记忆）
+  STATE["texts"]  已输入句子的累计文本（给 adapter 提取水位/渠底高程用）
+  runs.db         SQLite，每次成功计算落一条记录，支持点击回放
+"""
+import json
+import os
+import sqlite3
+import sys
+import threading
+import time
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+
+import numpy as np
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+WEB = os.path.join(ROOT, "web")
+DB_PATH = os.path.join(ROOT, "runs.db")
+sys.path.insert(0, ROOT)
+
+from agent.merge import merge, turn, missing_of   # noqa: E402
+from agent import llm, adapter, legality          # noqa: E402
+import gvf_core                                   # noqa: E402
+
+STATE = {"slots": {}, "texts": [], "raws": []}
+CACHE = {"params": None, "result": None}
+LOCK = threading.Lock()
+MAX_PTS = 1200
+
+# 表单提交时由表单整体持有的键：提交 reaches 视为"完整参数集"，
+# 先清掉这些键再覆盖，避免上一轮的渠首条件/模式残留。
+FORM_KEYS = ("Q", "reaches", "downstream", "h0", "zw", "upstream", "up_h",
+             "mode", "jump_len_formula", "z_b0", "section", "b", "m", "n", "i", "L")
+
+WARN_CODE_TO_H = {
+    "W_DOWNSTREAM_SUPERCRITICAL": "H4",
+    "W_OVER_CONSTRAINED": "H5",
+    "W_OUTFALL_SUPERCRITICAL": "H6",
+    "W_H0_ABSENT": "H3",
+}
+
+
+# ---------------------------------------------------------------- 工具
+def _json_safe(obj):
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return [_json_safe(v) for v in obj.tolist()]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    return obj
+
+
+def _idx(n, cap=MAX_PTS):
+    if n <= cap:
+        return list(range(n))
+    return [int(i * (n - 1) / (cap - 1)) for i in range(cap)]
+
+
+def pack(res):
+    segs = []
+    for s in res.segments:
+        ix = _idx(len(s.x))
+        segs.append({
+            "seg_id": s.seg_id, "reach_index": s.reach_index,
+            "curve_type": s.curve_type, "regime": s.regime, "direction": s.direction,
+            "x": [float(s.x[k]) for k in ix],
+            "h": [float(s.h[k]) for k in ix],
+            "z_b": [float(s.z_b[k]) for k in ix],
+            "z_w": [float(s.z_w[k]) for k in ix],
+            "Fr": [float(s.Fr[k]) for k in ix],
+            "v": [float(s.v[k]) for k in ix],
+            "start_reason": s.start_reason, "end_reason": s.end_reason,
+            "len_99": s.len_to_99pct_h0, "flags": _json_safe(s.flags),
+        })
+    reaches = [{
+        "index": r.index, "name": r.name, "x_start": r.x_start, "x_end": r.x_end,
+        "i": r.i, "b": r.b, "m": r.m, "n": r.n,
+        "z_b_start": r.z_b_start, "z_b_end": r.z_b_end,
+        "h0": r.h0, "hc": r.hc, "ic": r.ic,
+        "slope_class": r.slope_class, "L": r.L,
+    } for r in res.reaches]
+    return _json_safe({
+        "status": res.status, "reaches": reaches, "nodes": res.nodes,
+        "controls": res.controls, "segments": segs,
+        "transitions": [t.to_dict() for t in res.transitions],
+        "facts": res.facts,
+        "warnings": [w.to_dict() for w in res.warnings],
+        "diagnostics": res.diagnostics,
+    })
+
+
+def _kernel_warn_codes(res):
+    return sorted({WARN_CODE_TO_H[w.code] for w in res.warnings if w.code in WARN_CODE_TO_H})
+
+
+# ---------------------------------------------------------------- 预设算例
+PRESET_LABELS = {
+    "M1": "M1 壅水 · 缓坡 + 高尾水",
+    "M2": "M2 降水 · 缓坡 + 渠末跌水",
+    "outfall": "渠末自由跌水 · 临界控制",
+    "steep": "S2 降水 · 陡坡 + 渠首急流",
+    "mild_to_steep": "缓坡转陡坡 · M2｜临界｜S2",
+    "jump": "陡坡转缓坡 · 含水跃",
+    "trapezoid": "梯形断面 · 壅水",
+}
+
+
+def _preset_list():
+    return [{"key": k, "name": PRESET_LABELS.get(k, k)}
+            for k in gvf_core.PRESETS]
+
+
+def _params_to_form(pr):
+    """把内核 Params 转成前端口径的表单参数。"""
+    return {
+        "Q": pr.Q,
+        "mode": pr.mode,
+        "alpha": pr.alpha,
+        "beta": pr.beta,
+        "jump_len_formula": pr.jump_len_formula,
+        "reaches": [{"L": r.L, "i": r.i, "b": r.b, "m": r.m, "n": r.n}
+                    for r in pr.reaches],
+        "downstream": pr.downstream.type,
+        "h0": pr.downstream.h,
+        "zw": pr.downstream.zw,
+        "upstream": pr.upstream.type,
+        "up_h": pr.upstream.h,
+        "z_b0": (pr.reaches[0].z_b_start if pr.reaches else 0.0) or 0.0,
+    }
+
+
+def _ctx():
+    """归一化后的累计文本：给 adapter 提取水位/渠底高程用（它认数字）。"""
+    return "\n".join(STATE["texts"])
+
+
+def _raw():
+    """用户原句累计文本：给合法性判定用（它要认中文数字/口语特征）。"""
+    return "\n".join(STATE["raws"])
+
+
+def _evaluate(ctx_text, slots, raw_text=None):
+    """用给定槽位跑 adapter + legality，返回 (adapter_out, legal, rows)。
+
+    adapter 吃归一化文本，legality 吃原句 —— 混用会导致 B 类被误判成 A 类。
+    """
+    merged = {"slots": dict(slots), "warnings": [], "normalized": ctx_text}
+    a = adapter.build(merged)
+    # 纯表单模式（没有任何原句）时给个占位，避免被 I 类"输入为空"误拦
+    raw = raw_text if raw_text not in (None, "") else (ctx_text or "表单参数")
+    legal = legality.classify(raw, merged, a)
+    return a, legal, a["rows"]
+
+
+# ---------------------------------------------------------------- 历史（SQLite）
+HISTORY = {"ok": None}
+
+
+def history_ok():
+    """历史库是否可写（目录只读时返回 False，但计算照常）。"""
+    if HISTORY["ok"] is None:
+        try:
+            conn = _db()
+            conn.close()
+            HISTORY["ok"] = True
+        except Exception:
+            HISTORY["ok"] = False
+    return HISTORY["ok"]
+
+
+def _db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute("""CREATE TABLE IF NOT EXISTS runs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        text TEXT,
+        raw TEXT,
+        slots TEXT,
+        curves TEXT,
+        status TEXT)""")
+    # 兼容早先没有 raw 列的库
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(runs)")]
+    if "raw" not in cols:
+        conn.execute("ALTER TABLE runs ADD COLUMN raw TEXT DEFAULT ''")
+        conn.commit()
+    return conn
+
+
+def save_run(text, raw, slots, curves, status):
+    """写一条历史。写不进去（目录只读等）只影响历史，不影响计算。"""
+    try:
+        with LOCK:
+            conn = _db()
+            try:
+                cur = conn.execute(
+                    "INSERT INTO runs(ts,text,raw,slots,curves,status) VALUES(?,?,?,?,?,?)",
+                    (time.strftime("%Y-%m-%d %H:%M:%S"), text, raw,
+                     json.dumps(slots, ensure_ascii=False),
+                     json.dumps(curves, ensure_ascii=False), status))
+                conn.commit()
+                return cur.lastrowid
+            finally:
+                conn.close()
+    except Exception as e:
+        print("[历史] 写入失败（不影响计算）：%s: %s" % (type(e).__name__, e))
+        return None
+
+
+def list_runs(limit=20):
+    try:
+        conn = _db()
+        try:
+            rows = conn.execute(
+                "SELECT id,ts,text,raw,slots,curves,status FROM runs ORDER BY id DESC LIMIT ?",
+                (limit,)).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return []
+    out = []
+    for rid, ts, text, raw, slots, curves, status in rows:
+        try:
+            sl = json.loads(slots or "{}")
+        except Exception:
+            sl = {}
+        out.append({"id": rid, "ts": ts, "text": (text or "")[-60:],
+                    "raw": (raw or "")[-60:], "slots": sl,
+                    "curves": json.loads(curves or "[]"), "status": status})
+    return out
+
+
+def get_run(rid):
+    try:
+        conn = _db()
+        try:
+            row = conn.execute(
+                "SELECT id,ts,text,raw,slots,curves,status FROM runs WHERE id=?", (rid,)).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    rid, ts, text, raw, slots, curves, status = row
+    return {"id": rid, "ts": ts, "text": text, "raw": raw,
+            "slots": json.loads(slots or "{}"),
+            "curves": json.loads(curves or "[]"), "status": status}
+
+
+# ---------------------------------------------------------------- HTTP
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=WEB, **kw)
+
+    def _json(self, obj, code=200):
+        data = json.dumps(_json_safe(obj), ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    # ---------------- GET ----------------
+    def do_GET(self):
+        u = urlparse(self.path)
+
+        if u.path == "/api/health":
+            return self._json({"ok": True, "llm": llm.health(),
+                               "core": gvf_core.SCHEMA_VERSION,
+                               "history": history_ok(),
+                               "session": len(STATE["slots"])})
+
+        if u.path == "/api/presets":
+            return self._json({"presets": _preset_list()})
+
+        if u.path == "/api/preset":
+            qs = parse_qs(u.query)
+            name = qs.get("name", [""])[0]
+            if name not in gvf_core.PRESETS:
+                return self._json({"error": "没有这个预设算例"}, 404)
+            pr = gvf_core.PRESETS[name]()
+            return self._json({"name": name, "params": _params_to_form(pr)})
+
+        if u.path == "/api/state":
+            a, legal, rows = _evaluate(_ctx(), STATE["slots"], _raw())
+            return self._json({"slots": STATE["slots"], "missing": a["missing"],
+                               "rows": rows, "legal": legal,
+                               "ready": a["params"] is not None
+                                        and legal["verdict"] != "reject"})
+
+        if u.path == "/api/history":
+            qs = parse_qs(u.query)
+            try:
+                limit = int(qs.get("limit", ["20"])[0])
+            except ValueError:
+                limit = 20
+            return self._json({"runs": list_runs(limit)})
+
+        if u.path == "/api/section":
+            qs = parse_qs(u.query)
+            try:
+                x = float(qs.get("x", ["0"])[0])
+            except ValueError:
+                return self._json({"found": False, "error": "x 不是数字"}, 400)
+            if CACHE["result"] is None:
+                return self._json({"found": False, "error": "尚未计算"}, 400)
+            try:
+                sa = gvf_core.section_at_point(
+                    CACHE["params"], CACHE["result"].reaches,
+                    CACHE["result"].segments, CACHE["result"].transitions, x)
+                return self._json(sa)
+            except Exception as e:
+                return self._json({"found": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        return super().do_GET()
+
+    # ---------------- POST ----------------
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return self._json({"error": "bad json"}, 400)
+        path = urlparse(self.path).path
+
+        # ---- 清空会话 ----
+        if path == "/api/reset":
+            with LOCK:
+                STATE["slots"] = {}
+                STATE["texts"] = []
+                STATE["raws"] = []
+                CACHE["params"] = CACHE["result"] = None
+            return self._json({"ok": True, "slots": {}, "missing": missing_of({})})
+
+        # ---- 一句话 → 更新会话状态 ----
+        if path == "/api/turn":
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._json({"error": "text 为空"}, 400)
+            try:
+                with LOCK:
+                    r = turn(text, STATE["slots"], use_llm=body.get("use_llm", True))
+                    STATE["texts"].append(r["normalized"])
+                    STATE["raws"].append(text)
+                    ctx = _ctx()
+                    rawctx = _raw()
+                a, legal, rows = _evaluate(ctx, STATE["slots"], rawctx)
+                ready = (a["params"] is not None) and legal["verdict"] != "reject"
+                return self._json({
+                    "channels": r["channels"], "added": r["added"], "delta": r["delta"],
+                    "slots": STATE["slots"], "normalized": r["normalized"],
+                    "missing": a["missing"], "rows": rows, "legal": legal,
+                    "warnings": r["warnings"] + a["warnings"],
+                    "ready": ready,
+                })
+            except Exception as e:
+                return self._json({"error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        # ---- 解析（无状态，保留给验收脚本）----
+        if path == "/api/parse":
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._json({"error": "text 为空"}, 400)
+            try:
+                m = merge(text, use_llm=body.get("use_llm", True))
+                a = adapter.build(m, body.get("overrides"))
+                legal = legality.classify(text, m, a)
+                a.pop("params", None)
+                m["adapter"] = a
+                m["legal"] = legal
+                return self._json(m)
+            except Exception as e:
+                return self._json({"error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        # ---- 回放某条历史 ----
+        if path.startswith("/api/history/") and path.endswith("/load"):
+            try:
+                rid = int(path.split("/")[3])
+            except (IndexError, ValueError):
+                return self._json({"error": "bad id"}, 400)
+            run = get_run(rid)
+            if not run:
+                return self._json({"error": "没有这条记录"}, 404)
+            with LOCK:
+                STATE["slots"] = dict(run["slots"])
+                STATE["texts"] = [run["text"] or ""]
+                STATE["raws"] = [run.get("raw") or run["text"] or ""]
+                ctx = _ctx()
+                a, legal, rows = _evaluate(ctx, STATE["slots"], _raw())
+                if a["params"] is None or legal["verdict"] == "reject":
+                    return self._json({"ok": False, "legal": legal,
+                                       "missing": a["missing"], "rows": rows,
+                                       "slots": STATE["slots"]})
+                try:
+                    res = gvf_core.solve(a["params"])
+                except ValueError as e:
+                    return self._json({"ok": False,
+                                       "legal": {"code": "G", "verdict": "reject",
+                                                 "label": legality.CLASS_LABEL["G"],
+                                                 "reasons": ["参数不合法：%s" % e],
+                                                 "hints": []}}, 400)
+                CACHE["params"], CACHE["result"] = a["params"], res
+            return self._json({"ok": True, "replayed": rid, "slots": STATE["slots"],
+                               "map": rows, "warnings": a["warnings"],
+                               "legal": legal, "result": pack(res)})
+
+        # ---- 计算 ----
+        if path == "/api/solve":
+            text = (body.get("text") or "").strip()
+            overrides = body.get("overrides") or {}
+            try:
+                if text:
+                    # 一次性模式（不碰会话）
+                    m = merge(text, use_llm=body.get("use_llm", True))
+                    slots = dict(m["slots"])
+                    slots.update({k: v for k, v in overrides.items()
+                                  if v is not None and v != ""})
+                    ctx = m["normalized"]
+                    rawctx = text
+                else:
+                    # 表单整体提交（带 reaches）→ 以表单为准，先清掉表单持有的键
+                    if "reaches" in overrides:
+                        slots = {k: v for k, v in STATE["slots"].items()
+                                 if k not in FORM_KEYS}
+                    else:
+                        slots = dict(STATE["slots"])
+                    slots.update({k: v for k, v in overrides.items()
+                                  if v is not None and v != ""})
+                    ctx = _ctx()
+                    rawctx = _raw()
+
+                a, legal, rows = _evaluate(ctx, slots, rawctx)
+
+                if legal["verdict"] == "reject":
+                    return self._json({"ok": False, "legal": legal,
+                                       "missing": a["missing"], "warnings": a["warnings"],
+                                       "rows": a["rows"]})
+                if legal["verdict"] == "incomplete" or a["params"] is None:
+                    return self._json({"ok": False, "legal": legal,
+                                       "missing": a["missing"], "warnings": a["warnings"],
+                                       "rows": a["rows"]})
+
+                res = gvf_core.solve(a["params"])
+            except ValueError as e:
+                return self._json({"ok": False,
+                                   "legal": {"code": "G", "verdict": "reject",
+                                             "label": legality.CLASS_LABEL["G"],
+                                             "reasons": ["参数不合法：%s" % e],
+                                             "hints": ["请检查糙率、边坡、底宽、渠长是否在合理范围"]},
+                                   "error": "参数不合法：%s" % e}, 400)
+            except Exception as e:
+                return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
+                                   "legal": {"code": "I", "verdict": "reject",
+                                             "label": "计算失败", "reasons": [str(e)],
+                                             "hints": []}}, 500)
+
+            h_codes = _kernel_warn_codes(res)
+            if h_codes:
+                legal = dict(legal)
+                legal["kernel_codes"] = h_codes
+                legal["reasons"] = list(legal.get("reasons") or []) + \
+                    ["内核提示：%s" % "、".join(h_codes)]
+
+            CACHE["params"], CACHE["result"] = a["params"], res
+            # 表单驱动（没有新文本）时，把这次用的参数写回会话，
+            # 这样"改表单 → 计算 → 再接着说话"不会丢参数。
+            if not text:
+                with LOCK:
+                    STATE["slots"] = dict(slots)
+            curves = [s.curve_type for s in res.segments]
+            run_id = save_run(ctx[-120:], rawctx[-120:], slots, curves, res.status)
+            return self._json({"ok": True, "run_id": run_id, "map": a["rows"],
+                               "warnings": a["warnings"], "legal": legal,
+                               "slots": slots, "result": pack(res)})
+
+        return self._json({"error": "not found"}, 404)
+
+    def log_message(self, fmt, *args):
+        sys.stdout.write("[web] %s\n" % (fmt % args))
+
+
+if __name__ == "__main__":
+    # 端口自适应：8000 被占（比如已经开着一个）就往后找，避免双击启动失败
+    base = int(os.environ.get("GVF_PORT", "8000"))
+    httpd = None
+    port = base
+    for cand in range(base, base + 20):
+        try:
+            httpd = ThreadingHTTPServer(("127.0.0.1", cand), Handler)
+            port = cand
+            break
+        except OSError:
+            continue
+    if httpd is None:
+        print("端口 %d~%d 都被占用，无法启动。" % (base, base + 19))
+        sys.exit(1)
+
+    # 写端口文件：启动脚本据此打开浏览器
+    try:
+        with open(os.path.join(ROOT, ".port"), "w", encoding="utf-8") as f:
+            f.write(str(port))
+    except OSError:
+        pass
+
+    print("=" * 56)
+    print("服务地址：http://127.0.0.1:%d" % port)
+    print("内核：gvf_core %s" % gvf_core.SCHEMA_VERSION)
+    print("会话：服务端槽位表（参数记忆在进程内，可清空）")
+    print("历史：%s" % (DB_PATH if history_ok() else "不可写（计算不受影响，历史功能关闭）"))
+    print("Ollama：%s" % ("在线" if llm.health() else "未连接（规则解析仍可用，计算不受影响）"))
+    print("=" * 56)
+    print("正在预热模型（约 10 秒，未装模型时自动跳过）...")
+    llm.preheat()
+    print("就绪。关闭本窗口即停止服务。")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n已停止。")
