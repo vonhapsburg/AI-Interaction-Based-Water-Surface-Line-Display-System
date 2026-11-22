@@ -73,8 +73,33 @@ def turn(text, state, use_llm=True):
         if full_desc:
             state.pop("reaches", None)
             warns.append("这句话完整描述了渠道，已按单段重建（清除表单中的多段设置）")
-        elif any(k in delta for k in ("b", "n", "i", "m", "L")):
-            warns.append("当前是多段渠道，b/n/i/m/L 请直接在参数表单里按段修改（本句已记入参数表）")
+        else:
+            # 局部修改：把这一句里的断面参数直接落到各段的 reaches 上，
+            # 这样参数表单能立刻反映对话里说的值，而不是只记在顶层槽位里。
+            per = {k: delta[k] for k in ("b", "n", "i", "m") if k in delta}
+            if delta.get("section") == "rectangular":
+                per["m"] = 0.0
+            if per:
+                for rr in state["reaches"]:
+                    for k, v in per.items():
+                        try:
+                            rr[k] = float(v)
+                        except (TypeError, ValueError):
+                            pass
+                if len(state["reaches"]) == 1:
+                    warns.append("已同步到第1段：" + "、".join(
+                        "%s=%g" % (k, float(v)) for k, v in per.items()))
+                else:
+                    warns.append("已同步到全部 %d 段" % len(state["reaches"]))
+            if "L" in delta:
+                if len(state["reaches"]) == 1:
+                    try:
+                        state["reaches"][0]["L"] = float(delta["L"])
+                        warns.append("第1段长度已改为 %g m" % float(delta["L"]))
+                    except (TypeError, ValueError):
+                        pass
+                else:
+                    warns.append("多段渠道的长度请在表单里按段修改（本句已记入参数表）")
 
     added = _apply(state, delta, warns, "规则")
     warns.extend(r["warnings"])
