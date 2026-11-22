@@ -51,21 +51,32 @@ def main():
     code, p = req("/api/presets")
     groups = {g["name"]: g["items"] for g in (p.get("groups") or [])}
     check("有「12 型」分组", "12 型" in groups, list(groups))
-    check("12 型齐全", len(groups.get("12 型", [])) == 12,
-          [x["label"] for x in groups.get("12 型", [])])
+    check("12 型齐全（矩形+梯形各 12）", len(groups.get("12 型", [])) >= 12,
+          len(groups.get("12 型", [])))
+    _lbl = [x["label"] for x in groups.get("12 型", [])]
+    check("12 型同时覆盖矩形与梯形断面",
+          any("矩形" in x for x in _lbl) and any("梯形" in x for x in _lbl),
+          _lbl[:3])
     check("有坡度组合（缓缓/陡陡/缓陡/陡缓）", len(groups.get("坡度组合", [])) >= 4,
           [x["label"] for x in groups.get("坡度组合", [])])
     check("有典型现象（水跃/水跌）", len(groups.get("典型现象", [])) >= 3,
           [x["label"] for x in groups.get("典型现象", [])])
-    # ---- 五类综合：必须是第一部分 ----
+    # ---- 五类综合：必须是第一部分，且两种断面都有 ----
     first = (p.get("groups") or [{}])[0].get("name")
     check("「五类综合」排在第一位", first == "五类综合", first)
-    check("五类综合共 5 条（M/S/C/H/A）", len(groups.get("五类综合", [])) == 5,
-          [x["label"] for x in groups.get("五类综合", [])])
-    want_slope = {"class_M": "mild", "class_S": "steep", "class_C": "critical",
-                  "class_H": "horizontal", "class_A": "adverse"}
+    cls_items = groups.get("五类综合", [])
+    check("五类综合覆盖 M/S/C/H/A", len({x["key"].split("_")[1]
+                                       for x in cls_items}) == 5,
+          [x["label"] for x in cls_items])
+    check("五类综合同时有矩形与梯形",
+          any("矩形" in x["label"] for x in cls_items)
+          and any("梯形" in x["label"] for x in cls_items),
+          [x["label"] for x in cls_items])
+    want_slope = {"M": "mild", "S": "steep", "C": "critical",
+                  "H": "horizontal", "A": "adverse"}
     bad_cls = []
-    for it in groups.get("五类综合", []):
+    trap_ok = 0
+    for it in cls_items:
         code, pr = req("/api/preset?key=" + it["key"])
         if not pr.get("params"):
             bad_cls.append((it["key"], "取参数失败"))
@@ -74,10 +85,18 @@ def main():
         if not s.get("ok"):
             bad_cls.append((it["key"], "计算失败"))
             continue
+        letter = it["key"].split("_")[1][0]
         slopes = {r["slope_class"] for r in s["result"]["reaches"]}
-        if want_slope.get(it["key"]) not in slopes:
+        if want_slope[letter] not in slopes:
             bad_cls.append((it["key"], slopes))
-    check("五类综合各自坡型正确", not bad_cls, bad_cls)
+        if it["key"].endswith("_T"):
+            m = s["result"]["reaches"][0]["m"]
+            if m and m > 0:
+                trap_ok += 1
+            else:
+                bad_cls.append((it["key"], "梯形 m=%s" % m))
+    check("五类综合各自坡型正确", not bad_cls, bad_cls[:3])
+    check("梯形算例确实是梯形断面（m>0）", trap_ok == 5, trap_ok)
     # ---- 水跌两种成因都要在 ----
     labels = [x["label"] for x in groups.get("典型现象", [])]
     check("典型现象含坡折跌水与渠末跌水",

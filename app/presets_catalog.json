@@ -5,7 +5,7 @@
   {
    "key": "class_M",
    "group": "五类综合",
-   "label": "M 类 · 缓坡（M1 / M2 / M3）",
+   "label": "M 类 · 缓坡（矩形）",
    "desc": "对照教材图 (a)：N-N 线以上为 M1，N-N 与 C-C 之间为 M2，C-C 以下为 M3。本算例从Ⅲ区起算，先走 M3，越过后形成水跃转入 M2；把渠末水深调大可得 M1。",
    "params": {
     "Q": 10.0,
@@ -46,7 +46,7 @@
   {
    "key": "class_S",
    "group": "五类综合",
-   "label": "S 类 · 陡坡（S1 / S2 / S3）",
+   "label": "S 类 · 陡坡（矩形）",
    "desc": "对照教材图 (c)：C-C 线以上为 S1，C-C 与 N-N 之间为 S2，N-N 以下为 S3。本算例由下游控制向上游推算，可看到 S2 过渡到 S1。",
    "params": {
     "Q": 10.0,
@@ -87,7 +87,7 @@
   {
    "key": "class_C",
    "group": "五类综合",
-   "label": "C 类 · 临界坡（C1 / C3）",
+   "label": "C 类 · 临界坡（矩形）",
    "desc": "对照教材图 (e)：C-C 与 N-N 重合，只有 C1（上方）与 C3（下方）两支。临界坡对参数极敏感，i 必须正好等于 i_c。",
    "params": {
     "Q": 10.0,
@@ -128,7 +128,7 @@
   {
    "key": "class_H",
    "group": "五类综合",
-   "label": "H 类 · 平坡（H2 / H3）",
+   "label": "H 类 · 平坡（矩形）",
    "desc": "对照教材图 (g)：平坡没有 N-N 线，C-C 线以上为 H2、以下为 H3。",
    "params": {
     "Q": 10.0,
@@ -169,7 +169,7 @@
   {
    "key": "class_A",
    "group": "五类综合",
-   "label": "A 类 · 负坡（A2 / A3）",
+   "label": "A 类 · 负坡（矩形）",
    "desc": "对照教材图 (i)：负坡同样没有 N-N 线，C-C 线以上为 A2、以下为 A3。",
    "params": {
     "Q": 10.0,
@@ -210,8 +210,8 @@
   {
    "key": "type_M1",
    "group": "12 型",
-   "label": "M1 · 缓坡Ⅰ区",
-   "desc": "单段「M1」，M1",
+   "label": "M1 · 缓坡Ⅰ区（矩形）",
+   "desc": "单段「M1」（（矩形）断面），M1",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -250,8 +250,8 @@
   {
    "key": "type_M2",
    "group": "12 型",
-   "label": "M2 · 缓坡Ⅱ区",
-   "desc": "单段「M2」，M2",
+   "label": "M2 · 缓坡Ⅱ区（矩形）",
+   "desc": "单段「M2」（（矩形）断面），M2",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -290,8 +290,8 @@
   {
    "key": "type_M3",
    "group": "12 型",
-   "label": "M3 · 缓坡Ⅲ区",
-   "desc": "单段「M3 → M2」，M3",
+   "label": "M3 · 缓坡Ⅲ区（矩形）",
+   "desc": "单段「M3 → M2」（（矩形）断面），M3",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -331,8 +331,8 @@
   {
    "key": "type_S1",
    "group": "12 型",
-   "label": "S1 · 陡坡Ⅰ区",
-   "desc": "单段「S2 → S1」，S1",
+   "label": "S1 · 陡坡Ⅰ区（矩形）",
+   "desc": "单段「S2 → S1」（（矩形）断面），S1",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -372,8 +372,8 @@
   {
    "key": "type_S2",
    "group": "12 型",
-   "label": "S2 · 陡坡Ⅱ区",
-   "desc": "单段「S2」，S2",
+   "label": "S2 · 陡坡Ⅱ区（矩形）",
+   "desc": "单段「S2」（（矩形）断面），S2",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -412,8 +412,8 @@
   {
    "key": "type_S3",
    "group": "12 型",
-   "label": "S3 · 陡坡Ⅲ区",
-   "desc": "单段「S3」，S3",
+   "label": "S3 · 陡坡Ⅲ区（矩形）",
+   "desc": "单段「S3」（（矩形）断面），S3",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -452,8 +452,8 @@
   {
    "key": "type_C1",
    "group": "12 型",
-   "label": "C1 · 临界坡Ⅰ区",
-   "desc": "单段「C1」，C1",
+   "label": "C1 · 临界坡Ⅰ区（矩形）",
+   "desc": "单段「C1」（（矩形）断面），C1",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -492,8 +492,8 @@
   {
    "key": "type_C3",
    "group": "12 型",
-   "label": "C3 · 临界坡Ⅲ区",
-   "desc": "单段「C3 → C1」，C3",
+   "label": "C3 · 临界坡Ⅲ区（矩形）",
+   "desc": "单段「C3 → C1」（（矩形）断面），C3",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -533,8 +533,8 @@
   {
    "key": "type_H2",
    "group": "12 型",
-   "label": "H2 · 平坡Ⅱ区",
-   "desc": "单段「H2」，H2",
+   "label": "H2 · 平坡Ⅱ区（矩形）",
+   "desc": "单段「H2」（（矩形）断面），H2",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -573,8 +573,8 @@
   {
    "key": "type_H3",
    "group": "12 型",
-   "label": "H3 · 平坡Ⅲ区",
-   "desc": "单段「H3 → H2」，H3",
+   "label": "H3 · 平坡Ⅲ区（矩形）",
+   "desc": "单段「H3 → H2」（（矩形）断面），H3",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -614,8 +614,8 @@
   {
    "key": "type_A2",
    "group": "12 型",
-   "label": "A2 · 负坡Ⅱ区",
-   "desc": "单段「A2」，A2",
+   "label": "A2 · 负坡Ⅱ区（矩形）",
+   "desc": "单段「A2」（（矩形）断面），A2",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -654,8 +654,8 @@
   {
    "key": "type_A3",
    "group": "12 型",
-   "label": "A3 · 负坡Ⅲ区",
-   "desc": "单段「A3 → A2」，A3",
+   "label": "A3 · 负坡Ⅲ区（矩形）",
+   "desc": "单段「A3 → A2」（（矩形）断面），A3",
    "params": {
     "Q": 10.0,
     "mode": "teaching",
@@ -695,7 +695,7 @@
   {
    "key": "combo_mild_mild",
    "group": "坡度组合",
-   "label": "缓坡 → 缓坡",
+   "label": "缓坡 → 缓坡（矩形）",
    "desc": "两种缓坡拼接，M1 → M1",
    "params": {
     "Q": 10.0,
@@ -706,14 +706,14 @@
       "L": 400,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 400,
       "i": 0.0006,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -754,7 +754,7 @@
   {
    "key": "combo_steep_steep",
    "group": "坡度组合",
-   "label": "陡坡 → 陡坡",
+   "label": "陡坡 → 陡坡（矩形）",
    "desc": "S3 → S2",
    "params": {
     "Q": 10.0,
@@ -765,14 +765,14 @@
       "L": 300,
       "i": 0.02,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 300,
       "i": 0.05,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -813,7 +813,7 @@
   {
    "key": "combo_mild_steep",
    "group": "坡度组合",
-   "label": "缓坡 → 陡坡（坡折临界）",
+   "label": "缓坡 → 陡坡（坡折临界·矩形）",
    "desc": "M2 → S2",
    "params": {
     "Q": 10.0,
@@ -824,14 +824,14 @@
       "L": 300,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 300,
       "i": 0.02,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -872,7 +872,7 @@
   {
    "key": "combo_steep_mild",
    "group": "坡度组合",
-   "label": "陡坡 → 缓坡（含水跃）",
+   "label": "陡坡 → 缓坡（含水跃·矩形）",
    "desc": "S3 → M3 → M2",
    "params": {
     "Q": 10.0,
@@ -883,14 +883,14 @@
       "L": 200,
       "i": 0.05,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 400,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -933,7 +933,7 @@
   {
    "key": "case_drop",
    "group": "典型现象",
-   "label": "水跌 · 缓坡转陡坡（坡折跌水）",
+   "label": "水跌 · 坡折跌水（矩形）",
    "desc": "M2 → S2，坡折处临界控制、水面跌落",
    "params": {
     "Q": 10.0,
@@ -944,14 +944,14 @@
       "L": 400,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 400,
       "i": 0.02,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -993,7 +993,7 @@
   {
    "key": "case_outfall",
    "group": "典型现象",
-   "label": "水跌 · 渠末自由跌水",
+   "label": "水跌 · 渠末跌水（矩形）",
    "desc": "M2，渠末水跌",
    "params": {
     "Q": 10.0,
@@ -1004,7 +1004,7 @@
       "L": 600,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -1034,7 +1034,7 @@
   {
    "key": "case_jump",
    "group": "典型现象",
-   "label": "水跃 · 陡转缓",
+   "label": "水跃 · 陡转缓（矩形）",
    "desc": "S3 → M3 → M2，跃位 189.0 m",
    "params": {
     "Q": 10.0,
@@ -1045,14 +1045,14 @@
       "L": 150,
       "i": 0.05,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      },
      {
       "L": 450,
       "i": 0.001,
       "b": 5.0,
-      "m": 0,
+      "m": 0.0,
       "n": 0.015
      }
     ],
@@ -1089,6 +1089,1096 @@
      "h0": 1.124,
      "hc": 0.7415,
      "ic": 0.003448
+    }
+   ]
+  },
+  {
+   "key": "class_M_T",
+   "group": "五类综合",
+   "label": "M 类 · 缓坡（梯形）",
+   "desc": "对照教材图 (a)：N-N 线以上为 M1，N-N 与 C-C 之间为 M2，C-C 以下为 M3。本算例从Ⅲ区起算，先走 M3，越过后形成水跃转入 M2；把渠末水深调大可得 M1。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "M3",
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "class_S_T",
+   "group": "五类综合",
+   "label": "S 类 · 陡坡（梯形）",
+   "desc": "对照教材图 (c)：C-C 线以上为 S1，C-C 与 N-N 之间为 S2，N-N 以下为 S3。本算例由下游控制向上游推算，可看到 S2 过渡到 S1。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.103346313119413,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2",
+    "S1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "class_C_T",
+   "group": "五类综合",
+   "label": "C 类 · 临界坡（梯形）",
+   "desc": "对照教材图 (e)：C-C 与 N-N 重合，只有 C1（上方）与 C3（下方）两支。临界坡对参数极敏感，i 必须正好等于 i_c。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.002843106520584218,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "C3",
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.002843106520584218,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.6896,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "class_H_T",
+   "group": "五类综合",
+   "label": "H 类 · 平坡（梯形）",
+   "desc": "对照教材图 (g)：平坡没有 N-N 线，C-C 线以上为 H2、以下为 H3。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "H3",
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "class_A_T",
+   "group": "五类综合",
+   "label": "A 类 · 负坡（梯形）",
+   "desc": "对照教材图 (i)：负坡同样没有 N-N 线，C-C 线以上为 A2、以下为 A3。",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "A3",
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_M1_T",
+   "group": "12 型",
+   "label": "M1 · 缓坡Ⅰ区（梯形）",
+   "desc": "单段「M1」（（梯形）断面），M1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.3022030805775515,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_M2_T",
+   "group": "12 型",
+   "label": "M2 · 缓坡Ⅱ区（梯形）",
+   "desc": "单段「M2」（（梯形）断面），M2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.8098682516275135,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_M3_T",
+   "group": "12 型",
+   "label": "M3 · 缓坡Ⅲ区（梯形）",
+   "desc": "单段「M3 → M2」（（梯形）断面），M3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "M3",
+    "M2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_S1_T",
+   "group": "12 型",
+   "label": "S1 · 陡坡Ⅰ区（梯形）",
+   "desc": "单段「S2 → S1」（（梯形）断面），S1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.103346313119413,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2",
+    "S1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_S2_T",
+   "group": "12 型",
+   "label": "S2 · 陡坡Ⅱ区（梯形）",
+   "desc": "单段「S2」（（梯形）断面），S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.539750348421619,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_S3_T",
+   "group": "12 型",
+   "label": "S3 · 陡坡Ⅲ区（梯形）",
+   "desc": "单段「S3」（（梯形）断面），S3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.19495462557180243
+   },
+   "expect_types": [
+    "S3"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_C1_T",
+   "group": "12 型",
+   "label": "C1 · 临界坡Ⅰ区（梯形）",
+   "desc": "单段「C1」（（梯形）断面），C1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.002843106520584218,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.379182891399266,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.002843106520584218,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.6896,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_C3_T",
+   "group": "12 型",
+   "label": "C3 · 临界坡Ⅲ区（梯形）",
+   "desc": "单段「C3 → C1」（（梯形）断面），C3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.002843106520584218,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "C3",
+    "C1"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.002843106520584218,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "critical",
+     "h0": 0.6896,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_H2_T",
+   "group": "12 型",
+   "label": "H2 · 平坡Ⅱ区（梯形）",
+   "desc": "单段「H2」（（梯形）断面），H2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.689591445699633,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_H3_T",
+   "group": "12 型",
+   "label": "H3 · 平坡Ⅲ区（梯形）",
+   "desc": "单段「H3 → H2」（（梯形）断面），H3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": 0.0,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "H3",
+    "H2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.0,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "horizontal",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_A2_T",
+   "group": "12 型",
+   "label": "A2 · 负坡Ⅱ区（梯形）",
+   "desc": "单段「A2」（（梯形）断面），A2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 0.689591445699633,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "type_A3_T",
+   "group": "12 型",
+   "label": "A3 · 负坡Ⅲ区（梯形）",
+   "desc": "单段「A3 → A2」（（梯形）断面），A3",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150.0,
+      "i": -0.0005,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.3447957228498165
+   },
+   "expect_types": [
+    "A3",
+    "A2"
+   ],
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": -0.0005,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "adverse",
+     "h0": null,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "combo_mild_mild_T",
+   "group": "坡度组合",
+   "label": "缓坡 → 缓坡（梯形）",
+   "desc": "两种缓坡拼接，M1 → M1",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.0006,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 2.0,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M1",
+    "M1"
+   ],
+   "reaches": [
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 400.0,
+     "i": 0.0006,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 1.0744,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "combo_steep_steep_T",
+   "group": "坡度组合",
+   "label": "陡坡 → 陡坡（梯形）",
+   "desc": "S3 → S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 300,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 300,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "given_h",
+    "up_h": 0.35
+   },
+   "expect_types": [
+    "S3",
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 300.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 300.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.2973,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "combo_mild_steep_T",
+   "group": "坡度组合",
+   "label": "缓坡 → 陡坡（坡折临界·梯形）",
+   "desc": "M2 → S2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 300,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 300,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2",
+    "S2"
+   ],
+   "reaches": [
+    {
+     "L": 300.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 300.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "combo_steep_mild_T",
+   "group": "坡度组合",
+   "label": "陡坡 → 缓坡（含水跃·梯形）",
+   "desc": "S2 → M3 → M2",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 200,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.0,
+    "upstream": "given_h",
+    "up_h": 0.3
+   },
+   "expect_types": [
+    "S2",
+    "M3",
+    "M2"
+   ],
+   "expect_jump": true,
+   "reaches": [
+    {
+     "L": 200.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.2973,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "case_drop_T",
+   "group": "典型现象",
+   "label": "水跌 · 坡折跌水（梯形）",
+   "desc": "M2 → S2，坡折处临界控制、水面跌落",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 400,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 400,
+      "i": 0.02,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2",
+    "S2"
+   ],
+   "expect_transition": "critical",
+   "reaches": [
+    {
+     "L": 400.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 400.0,
+     "i": 0.02,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.3899,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "case_outfall_T",
+   "group": "典型现象",
+   "label": "水跌 · 渠末跌水（梯形）",
+   "desc": "M2，渠末水跌",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 600,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "free_outfall",
+    "h0": null,
+    "upstream": "none",
+    "up_h": null
+   },
+   "expect_types": [
+    "M2"
+   ],
+   "expect_transition": "outfall",
+   "reaches": [
+    {
+     "L": 600.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
+    }
+   ]
+  },
+  {
+   "key": "case_jump_T",
+   "group": "典型现象",
+   "label": "水跃 · 陡转缓（梯形）",
+   "desc": "S2 → M3 → M2，跃位 202.3 m",
+   "params": {
+    "Q": 10.0,
+    "mode": "teaching",
+    "jump_len_formula": "wu",
+    "reaches": [
+     {
+      "L": 150,
+      "i": 0.05,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     },
+     {
+      "L": 450,
+      "i": 0.001,
+      "b": 5.0,
+      "m": 1.5,
+      "n": 0.015
+     }
+    ],
+    "downstream": "given_h",
+    "h0": 1.1,
+    "upstream": "given_h",
+    "up_h": 0.3
+   },
+   "expect_types": [
+    "S2",
+    "M3",
+    "M2"
+   ],
+   "expect_transition": "jump",
+   "reaches": [
+    {
+     "L": 150.0,
+     "i": 0.05,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "steep",
+     "h0": 0.2973,
+     "hc": 0.6896,
+     "ic": 0.002843
+    },
+    {
+     "L": 450.0,
+     "i": 0.001,
+     "b": 5.0,
+     "m": 1.5,
+     "n": 0.015,
+     "slope": "mild",
+     "h0": 0.9301,
+     "hc": 0.6896,
+     "ic": 0.002843
     }
    ]
   }

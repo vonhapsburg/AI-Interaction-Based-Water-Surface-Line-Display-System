@@ -78,7 +78,8 @@
   .msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px;}
   .msg.sys{align-self:center;background:#eef3f8;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:99px;}
   .msg .who{display:block;font-size:11px;color:var(--faint);margin-bottom:3px;letter-spacing:.05em;}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 9px;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 9px;align-items:center;}
+  .chips-hint{font-size:11px;color:var(--faint);letter-spacing:.03em;white-space:nowrap;}
   .chip{
     font-size:12px;color:var(--accent2);background:#f1f6fb;border:1px solid #d9e6f2;
     border-radius:99px;padding:3px 9px;cursor:pointer;
@@ -291,7 +292,7 @@
 
     <section class="card">
       <div class="card-h">示例算例 <span class="tag">点一下直接算</span></div>
-      <div class="card-b" id="presetPanel" style="max-height:230px;overflow:auto;">
+      <div class="card-b" id="presetPanel" style="max-height:340px;overflow:auto;">
         <div class="empty">载入中…</div>
       </div>
     </section>
@@ -425,7 +426,7 @@ const state = {
          reaches:[{L:300,i:0.001,b:5,m:0,n:0.015},
                   {L:300,i:0.020,b:5,m:0,n:0.015}],
          up:"none", upH:null, down:"free_outfall", downH:null},
-  result: null, slots: {}, selectedX:null, hover:null, legal:null
+  result: null, slots: {}, selectedX:null, hover:null, legal:null, classKey:null
 };
 
 /* ---------------- 工具 ---------------- */
@@ -751,6 +752,45 @@ function drawProfile(){
   };
   stepLine("h0","#7d8b99");
   stepLine("hc","#b23c4a");
+
+  /* N-N / C-C 标注（教材图样式：两端各标一处） */
+  const tagLine=(key,color,text)=>{
+    const f=rs[0], l=rs[rs.length-1];
+    ctx.font="600 11px -apple-system,Segoe UI,sans-serif";
+    ctx.textBaseline="middle";
+    if(f[key]!=null){
+      ctx.fillStyle=color; ctx.textAlign="left";
+      ctx.fillText(text, X(f.x_start)+6, Y(f.z_b_start+f[key]));
+    }
+    if(l[key]!=null){
+      ctx.fillStyle=color; ctx.textAlign="right";
+      ctx.fillText(text, X(l.x_end)-6, Y(l.z_b_end+l[key]));
+    }
+  };
+  tagLine("h0","#5b6b7b","N-N");
+  tagLine("hc","#b23c4a","C-C");
+
+  /* 五类综合算例：照教材图在三条分支上标型号（M1/M2/M3 等） */
+  if(state.classKey && R.reaches.length){
+    const cls = state.classKey.replace("class_","").charAt(0);
+    const r0 = R.reaches[0];
+    const h0 = r0.h0, hc = r0.hc;
+    const zb = r0.z_b_start;
+    const xm = X(r0.x_start + (r0.x_end - r0.x_start) * 0.72);
+    ctx.font="600 13px -apple-system,Segoe UI,sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.globalAlpha = 0.55;
+    if(h0!=null){
+      ctx.fillStyle="#5b6b7b";
+      ctx.fillText(cls+"1", xm, Y(zb + h0*1.45));
+      if(hc<h0){ ctx.fillStyle="#2e6da4"; ctx.fillText(cls+"2", xm, Y(zb + (h0+hc)/2)); }
+    }
+    if(hc!=null){
+      ctx.fillStyle="#b23c4a";
+      ctx.fillText(cls+"3", xm, Y(zb + hc*0.45));
+    }
+    ctx.globalAlpha = 1;
+  }
 
   /* 水面线 */
   for(const s of R.segments){
@@ -1104,6 +1144,7 @@ function renderLegal(L){
 
 /* ---------------- 计算 ---------------- */
 async function calc(){
+  state.classKey = null;
   const btn = $("#calcBtn"); btn.disabled = true;
   $("#formHint").textContent = "计算中…"; $("#formHint").className = "hint";
   try{
@@ -1271,6 +1312,7 @@ function renderAmbiguities(list){
 
 /* 按用户点选的那一种理解重算（歧义消除） */
 async function applyPatch(patch, label){
+  state.classKey = null;
   try{
     const overrides = Object.assign({}, state.slots || {}, patch);
     const j = await (await fetch("/api/solve",{method:"POST",
@@ -1294,6 +1336,7 @@ async function applyPatch(patch, label){
 
 /* 把"试算出来的参数"落进表单并计算（用户点按钮才生效） */
 async function applyHypothesis(slots, btn){
+  state.classKey = null;
   if(btn){ btn.disabled = true; btn.textContent = "应用中…"; }
   try{
     const j = await (await fetch("/api/solve",{method:"POST",
@@ -1344,7 +1387,13 @@ async function loadPresets(){
         el.style.opacity = "0.5";
         try{
           const r = await (await fetch('/api/preset?key='+encodeURIComponent(key))).json();
-          if(r.params){ await applyHypothesis(r.params, null); bubble("已载入示例："+el.textContent,"ai","助手"); }
+          if(r.params){
+            await applyHypothesis(r.params, null);
+            /* 五类综合算例 → 按教材图样式在三条分支上标型号 */
+            state.classKey = (key.indexOf("class_") === 0) ? key : null;
+            drawProfile();
+            bubble("已载入示例："+el.textContent,"ai","助手");
+          }
           else bubble("载入失败："+(r.error||"未知原因"),"ai","助手");
         }catch(e){ bubble("载入失败："+e.message,"ai","助手"); }
         finally{ el.style.opacity = "1"; }
@@ -1527,8 +1576,26 @@ const BASE_CHIPS = [
   "怎么用？",
   "什么是临界水深？",
   "水跃是怎么判定的？",
-  "帮我算个水面线"
+  "正常水深和临界水深有什么区别？",
+  "临界底坡是怎么算的？",
+  "水跌和水跃的区别是什么？",
+  "跃长公式有哪几种？",
+  "为什么缓坡上会出现 M2？",
+  "多段渠道之间怎么衔接？",
+  "糙率取大了会怎样？",
+  "这个系统不适合算什么？"
 ];
+
+let _genPtr = 0;
+/* 通用问题轮换：每次渲染换一组，让「猜你想问」一直在变 */
+function pickGeneral(n){
+  const out = [];
+  for(let i=0;i<n && i<BASE_CHIPS.length;i++){
+    out.push(BASE_CHIPS[(_genPtr + i) % BASE_CHIPS.length]);
+  }
+  _genPtr = (_genPtr + n) % BASE_CHIPS.length;
+  return out;
+}
 
 /* 「猜你想问」：跟随当前工况变化，而不是永远问"为什么是M1" */
 function renderChips(){
@@ -1544,13 +1611,12 @@ function renderChips(){
     if(kinds.has("critical")) chips.push("坡折处为什么正好是临界水深？");
     const rs = R.reaches || [];
     if(rs.length > 1) chips.push("两段之间是怎么衔接的？");
-    const slopes = [...new Set(rs.map(r=>r.slope_class))];
-    if(slopes.length) chips.push("哪个参数对结果影响最大？");
   }else{
     chips.push("怎么用？", "给我一个水跃样例", "给我一个坡折水跌样例");
   }
-  const all = chips.concat(BASE_CHIPS.filter(c=>chips.indexOf(c) < 0)).slice(0, 7);
+  const all = chips.concat(pickGeneral(4)).slice(0, 8);
   holder.innerHTML =
+    '<span class="chips-hint">猜你想问</span>' +
     '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
     all.map(c=>'<span class="chip">'+c+'</span>').join("");
   const demo = $("#chipDemo");
@@ -1570,6 +1636,7 @@ const DEMO_FORM = {
 };
 
 function loadDemo(notify){
+  state.classKey = null;
   const f = state.form;
   f.Q = DEMO_FORM.Q;
   f.reaches = DEMO_FORM.reaches.map(r=>Object.assign({}, r));
