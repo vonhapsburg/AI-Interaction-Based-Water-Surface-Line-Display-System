@@ -136,7 +136,16 @@ def turn(text, state, use_llm=True, restructure=True):
     # 短句（「底宽5米」这类逐条输入）仍不叫，避免多轮时每句都发请求。
     missing = missing_of(state)
     long_sentence = len((r.get("normalized") or "")) >= 16
-    if use_llm and missing and (not added or long_sentence):
+    # 只差「控制水深是渠首还是渠末」时不必叫模型：
+    # 这是意图问题，不是语言理解问题，模型也答不了，问用户更快（前端会给选项）。
+    only_boundary_gap = (set(missing) <= {"h0"} and not re.search(
+        r"渠末|末端|下游|出口|渠首|上游|进口|跌水|自由出流",
+        r.get("normalized") or ""))
+    # 规则已经抽到 6 个以上字段，说明这句话它完全读懂了（实测这种句子
+    # 叫模型的回报基本为 0，白等 1~2 秒）。只在"规则理解得不多"时才问模型。
+    understood_enough = len(added) >= 6
+    if (use_llm and missing and (not added or long_sentence)
+            and not only_boundary_gap and not understood_enough):
         lr = llm.ask(text, current=state)
         if "error" in lr:
             warns.append("模型通道不可用：%s；已退回规则解析" % lr["error"])
