@@ -142,7 +142,26 @@ def turn(text, state, use_llm=True, restructure=True):
             warns.append("模型通道不可用：%s；已退回规则解析" % lr["error"])
         else:
             chans.append("llm")
-            added += _apply(state, lr["slots"], warns, "模型")
+            # 设计约定是「规则优先、模型补缺」：
+            # 本句规则已经抽到的字段，不再让模型覆盖（只记一条不一致提示）；
+            # 规则没抽到的字段才由模型补上，包括修改此前轮次留下的旧值。
+            llm_delta, conflicts = {}, []
+            for k, v in (lr["slots"] or {}).items():
+                if v is None or v == "":
+                    continue
+                if k in delta:            # 本句规则已给出 → 规则说了算
+                    old = delta[k]
+                    if isinstance(v, (int, float)) and isinstance(old, (int, float)):
+                        same = abs(float(old) - float(v)) <= 1e-9
+                    else:
+                        same = (old == v)
+                    if not same:
+                        conflicts.append("%s 规则=%s 模型=%s" % (k, old, v))
+                    continue
+                llm_delta[k] = v
+            if conflicts:
+                warns.append("模型与规则不一致，已采用规则值（%s）" % "；".join(conflicts))
+            added += _apply(state, llm_delta, warns, "模型")
 
     # 糙率量级兜底（模型/口语常把 0.015 给成 15）
     n = state.get("n")
