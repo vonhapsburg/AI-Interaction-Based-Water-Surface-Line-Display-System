@@ -206,7 +206,7 @@ def _ambiguity(text, added):
     return out
 
 
-_QUIZ_RE = re.compile(r"出题|题目|练习|考考|做题|测验|考试|习题")
+_QUIZ_RE = re.compile(r"出题|题目|练习|考考|做题|测验|考试|习题|出.{0,4}题|来.{0,3}道?题|考我")
 
 
 def _quiz_intent(text):
