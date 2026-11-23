@@ -292,8 +292,21 @@ def build(merged, overrides=None):
 
     # ---- 组 Params（支持多段覆盖）----
     mode = slots.get("mode") or "teaching"
-    alpha = 1.05 if mode == "engineering" else 1.0
-    beta = alpha
+    # 教学模式固定 1.00；工程模式默认 1.05，但允许用户自行调整（限 1.00~1.30）
+    if mode == "engineering":
+        def _coef(key, default):
+            try:
+                v = float(slots.get(key))
+            except (TypeError, ValueError):
+                return default
+            if not (1.0 <= v <= 1.30):
+                warns.append("%s=%.2f 超出 1.00~1.30，已按 %.2f 处理" % (key, v, default))
+                return default
+            return v
+        alpha = _coef("alpha", 1.05)
+        beta = _coef("beta", alpha)
+    else:
+        alpha = beta = 1.0
 
     raw_reaches2 = (overrides or {}).get("reaches") or raw_reaches
     reaches = []

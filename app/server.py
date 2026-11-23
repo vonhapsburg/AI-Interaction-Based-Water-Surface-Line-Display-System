@@ -37,7 +37,8 @@ MAX_PTS = 1200
 # 表单提交时由表单整体持有的键：提交 reaches 视为"完整参数集"，
 # 先清掉这些键再覆盖，避免上一轮的渠首条件/模式残留。
 FORM_KEYS = ("Q", "reaches", "downstream", "h0", "zw", "upstream", "up_h",
-             "mode", "jump_len_formula", "z_b0", "section", "b", "m", "n", "i", "L")
+             "mode", "alpha", "beta", "jump_len_formula", "z_b0",
+             "section", "b", "m", "n", "i", "L")
 
 WARN_CODE_TO_H = {
     "W_DOWNSTREAM_SUPERCRITICAL": "H4",
@@ -203,6 +204,98 @@ def _ambiguity(text, added):
             ],
         })
     return out
+
+
+_QUIZ_RE = re.compile(r"出题|题目|练习|考考|做题|测验|考试|习题")
+
+
+def _quiz_intent(text):
+    return bool(_QUIZ_RE.search(text or ""))
+
+
+def _f3(v, n=3):
+    if v is None:
+        return "—"
+    try:
+        return ("%%.%df" % n) % float(v)
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _build_quiz():
+    """按当前算例出题：题干与答案由内核数值直接生成，解析交给模型润色。"""
+    res, pr = CACHE["result"], CACHE["params"]
+    if res is None or pr is None:
+        return None
+    cn = {"mild": "缓坡", "steep": "陡坡", "critical": "临界坡",
+          "horizontal": "平坡", "adverse": "负坡"}
+    rs = res.reaches
+    seq = " → ".join(s.curve_type for s in res.segments)
+    items = []
+
+    items.append({
+        "q": "本渠各段的正常水深 h₀ 与临界水深 h_c 分别是多少？（并说明 h₀ 与 h_c 谁大谁小意味着什么）",
+        "a": "；".join("第%d段 h₀=%s m、h_c=%s m" % (r.index + 1, _f3(r.h0), _f3(r.hc))
+                      for r in rs),
+    })
+    items.append({
+        "q": "各段的坡型如何判别？水面线型号序列是什么？",
+        "a": "；".join("第%d段 i=%s、i_c=%s，属%s"
+                      % (r.index + 1, _f3(r.i, 5), _f3(r.ic, 5),
+                         cn.get(r.slope_class, r.slope_class)) for r in rs)
+             + "；型序列：" + seq,
+    })
+    jump = next((t for t in res.transitions if t.kind == "jump"), None)
+    if jump is not None:
+        d = jump.data or {}
+        items.append({
+            "q": "水跃发生在哪个里程？跃前、跃后水深与跃长、消能系数各是多少？",
+            "a": ("x=%s m；h₁=%s m，h₂=%s m，跃长 L_j=%s m，消能系数 K_j=%s"
+                  % (_f3(jump.x, 1), _f3(d.get("h1")), _f3(d.get("h2")),
+                     _f3(d.get("L_j")), _f3(d.get("Kj")))),
+        })
+    crit = next((t for t in res.transitions if t.kind == "critical"), None)
+    if crit is not None:
+        hc = (crit.data or {}).get("hc")
+        items.append({
+            "q": "坡折处（x=%s m）为什么会出现水面跌落？" % _f3(crit.x, 1),
+            "a": ("该处由缓坡进入陡坡，缓坡不能维持缓流，水面在坡折处降到临界水深 "
+                  "h_c=%s m 后进入急流，形成跌水" % _f3(hc)),
+        })
+    r0 = rs[0]
+    items.append({
+        "q": "临界底坡 i_c 的物理含义是什么？本渠第 1 段的 i 与 i_c 相比说明什么？",
+        "a": ("i_c=%s；第 1 段 i=%s，%s"
+              % (_f3(r0.ic, 5), _f3(r0.i, 5),
+                 "i < i_c → 缓坡" if r0.i < r0.ic else
+                 ("i > i_c → 陡坡" if r0.i > r0.ic else "i = i_c → 临界坡"))),
+    })
+
+    # 解析：交给模型写；失败就用内核给出的判别依据
+    blob = "\n".join("%d. %s\n   标准答案：%s" % (i + 1, it["q"], it["a"])
+                     for i, it in enumerate(items))
+    why = []
+    rep = llm.chat([
+        {"role": "system", "content":
+         "你是水力学老师。下面是一份依据某个水面线算例生成的题目与标准答案。"
+         "请为每题写 2–3 句解析，说明依据的公式或判据（如曼宁公式、临界水深条件、"
+         "Fr=1、水跃共轭水深等）。只能使用给定答案里出现的数字，不要新增数值。"
+         '输出严格的 JSON：{"why": ["第1题解析", "第2题解析", ...]}'},
+        {"role": "user", "content": blob},
+    ], max_tokens=900, temperature=0.3)
+    if "text" in rep:
+        try:
+            data = llm._extract_json(rep["text"])
+            why = list(data.get("why") or [])
+        except Exception:
+            why = []
+    if len(why) < len(items):
+        fallback = (res.facts or {}).get("reasons") or []
+        while len(why) < len(items):
+            why.append(fallback[len(why) % len(fallback)] if fallback else "")
+    for i, it in enumerate(items):
+        it["why"] = why[i]
+    return items
 
 
 def _generate_intent(text):
@@ -537,6 +630,36 @@ class Handler(SimpleHTTPRequestHandler):
                                        "curves": list(gen_item.get("types") or [])},
                         "channels": ["generator"], "added": [], "delta": {},
                         "slots": slots_now, "normalized": text,
+                        "missing": a["missing"], "rows": rows, "legal": legal,
+                        "warnings": [], "ready": False,
+                    })
+
+                # 「请根据现有水面线出一些题目」→ 按当前结果生成题与参考答案
+                if _quiz_intent(text):
+                    items = _build_quiz()
+                    if not items:
+                        with LOCK:
+                            slots_now = dict(STATE["slots"])
+                        a, legal, rows = _evaluate(_ctx() or text, slots_now, _raw() or text)
+                        return self._json({
+                            "act": "answer",
+                            "reply": "还没有计算结果，先算一次水面线，我再照着它出题。",
+                            "hypothesis": None, "channels": ["quiz"], "added": [],
+                            "delta": {}, "slots": slots_now, "normalized": text,
+                            "missing": a["missing"], "rows": rows, "legal": legal,
+                            "warnings": [], "ready": False,
+                        })
+                    reply = "根据当前算例出了 %d 道题（题干与答案来自内核数值）。" % len(items)
+                    with LOCK:
+                        STATE["chat"].append({"role": "user", "content": text})
+                        STATE["chat"].append({"role": "assistant", "content": reply})
+                        STATE["chat"] = STATE["chat"][-12:]
+                        slots_now = dict(STATE["slots"])
+                    a, legal, rows = _evaluate(_ctx() or text, slots_now, _raw() or text)
+                    return self._json({
+                        "act": "quiz", "reply": reply, "quiz": items,
+                        "hypothesis": None, "channels": ["quiz"], "added": [],
+                        "delta": {}, "slots": slots_now, "normalized": text,
                         "missing": a["missing"], "rows": rows, "legal": legal,
                         "warnings": [], "ready": False,
                     })

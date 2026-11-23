@@ -80,12 +80,30 @@
   .msg .who{display:block;font-size:11px;color:var(--faint);margin-bottom:3px;letter-spacing:.05em;}
   .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 9px;align-items:center;}
   .chips-hint{font-size:11px;color:var(--faint);letter-spacing:.03em;white-space:nowrap;}
+  .viewctl{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap;}
+  .xgo{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap;}
+  .xgo input{width:82px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit;}
+  .xgo input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 2px rgba(46,109,164,.12);}
+  .zoomb{
+    width:26px;height:24px;border:1px solid var(--line);background:#fff;border-radius:6px;
+    cursor:pointer;font-size:13px;line-height:1;color:var(--muted);font-family:inherit;
+  }
+  .zoomb:hover{border-color:var(--accent2);color:var(--accent2);}
   .chip{
     font-size:12px;color:var(--accent2);background:#f1f6fb;border:1px solid #d9e6f2;
     border-radius:99px;padding:3px 9px;cursor:pointer;
   }
   .chip:hover{background:#e6f0f9;}
   .chat-input{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line2);}
+  /* 出题：按当前算例生成的教学题（题干/答案来自内核） */
+  .quiz{padding:8px 10px;}
+  .qitem{margin-bottom:9px;}
+  .qitem:last-child{margin-bottom:2px;}
+  .qtitle{font-weight:600;margin-bottom:3px;}
+  .quiz details{margin-left:2px;}
+  .quiz summary{cursor:pointer;color:var(--accent2);font-size:12.5px;}
+  .qans{margin-top:4px;color:var(--ink);}
+  .qwhy{margin-top:3px;color:var(--muted);font-size:12.5px;}
   .chat-ctx{
     margin:0 12px 8px;padding:5px 9px;border-radius:6px;background:#eef5fb;
     border:1px solid #d5e6f4;color:var(--accent2);font-size:11.8px;line-height:1.5;
@@ -291,7 +309,12 @@
     </section>
 
     <section class="card">
-      <div class="card-h">示例算例 <span class="tag">点一下直接算</span></div>
+      <div class="card-h">示例算例
+        <div class="seg" id="presetSeg" style="margin-left:auto;">
+          <button data-sec="rectangular" class="on">矩形</button>
+          <button data-sec="trapezoidal">梯形</button>
+        </div>
+      </div>
       <div class="card-b" id="presetPanel" style="max-height:340px;overflow:auto;">
         <div class="empty">载入中…</div>
       </div>
@@ -306,7 +329,12 @@
         <div class="grid3" style="margin-bottom:10px;">
           <div class="field"><label>流量 Q (m³/s)</label><input id="fQ" type="number" step="0.1" value="10"></div>
           <div class="field"><label>重力加速度 g</label><input id="fg" type="number" step="0.01" value="9.81" disabled></div>
-          <div class="field"><label>α / β（按模式）</label><input id="fAlpha" type="text" value="1.00 / 1.00" disabled></div>
+          <div class="field"><label>α / β（工程模式可改）</label>
+            <div style="display:flex;gap:6px;">
+              <input id="fAlpha" type="number" step="0.01" value="1.00" title="动能修正系数 α" style="width:50%">
+              <input id="fBeta" type="number" step="0.01" value="1.00" title="动量修正系数 β" style="width:50%">
+            </div>
+          </div>
         </div>
 
         <div class="reachbox">
@@ -372,7 +400,15 @@
   <section class="right">
 
     <div class="card">
-      <div class="card-h">纵剖面图 <span class="tag" id="profileTag">点击图中任意位置查看横断面</span></div>
+      <div class="card-h">纵剖面图
+      <div class="viewctl">
+        <span class="tag" id="profileTag">点击图中任意位置查看横断面</span>
+        <span class="xgo">x = <input id="xInput" type="number" step="1" placeholder="100"> m</span>
+        <button class="zoomb" id="zoomOut" title="缩小">−</button>
+        <button class="zoomb" id="zoomIn" title="放大">＋</button>
+        <button class="zoomb" id="zoomReset" title="复位（双击图也可）">⤢</button>
+      </div>
+    </div>
       <div class="chartbox" id="profileWrap"><canvas id="profile"></canvas><div class="tip" id="profileTip"></div></div>
       <div class="legend">
         <span><i style="border-color:#2e6da4"></i>缓流段</span>
@@ -426,10 +462,28 @@ const state = {
          reaches:[{L:300,i:0.001,b:5,m:0,n:0.015},
                   {L:300,i:0.020,b:5,m:0,n:0.015}],
          up:"none", upH:null, down:"free_outfall", downH:null},
-  result: null, slots: {}, selectedX:null, hover:null, legal:null, classKey:null
+  result: null, slots: {}, selectedX:null, hover:null, legal:null, classKey:null, view:null, presetSec:"rectangular"
 };
 
 /* ---------------- 工具 ---------------- */
+/* ---------------- 出题：题干/答案来自内核，解析由模型写 ---------------- */
+function renderQuiz(items){
+  if(!items || !items.length) return;
+  const esc = s => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const box = document.createElement("div");
+  box.className = "msg ai quiz";
+  box.innerHTML = items.map((it, i) =>
+    '<div class="qitem"><div class="qtitle">' + (i+1) + '. ' + esc(it.q) + '</div>' +
+    '<details><summary>显示答案与解析</summary>' +
+      '<div class="qans"><b>参考答案：</b>' + esc(it.a) + '</div>' +
+      (it.why ? '<div class="qwhy"><b>解析：</b>' + esc(it.why) + '</div>' : '') +
+    '</details></div>').join("");
+  const body = $("#chatBody");
+  body.appendChild(box);
+  body.scrollTop = 1e9;
+}
+
 function bubble(text, who, whoName){
   const d = document.createElement("div");
   d.className = "msg " + who;
@@ -518,7 +572,13 @@ function syncForm(src){
   const f = state.form;
   if(src) applySlotsToForm(src);
   $("#fQ").value = f.Q;
-  $("#fAlpha").value = Number(f.alpha).toFixed(2)+" / "+Number(f.beta).toFixed(2);
+  $("#fAlpha").value = Number(f.alpha).toFixed(2);
+  $("#fBeta").value = Number(f.beta).toFixed(2);
+  const eng = (f.mode === "engineering");
+  $("#fAlpha").disabled = !eng;
+  $("#fBeta").disabled = !eng;
+  $("#fAlpha").title = eng ? "动能修正系数 α（可改，1.00~1.30）" : "教学模式固定 1.00";
+  $("#fBeta").title = eng ? "动量修正系数 β（可改，1.00~1.30）" : "教学模式固定 1.00";
   $("#fUpType").value = f.up || "none";
   $("#fUpH").value = f.upH == null ? "" : f.upH;
   $("#fUpH").disabled = (f.up !== "given_h");
@@ -589,6 +649,8 @@ function formParams(){
   const f = state.form;
   return {
     Q: Number(f.Q), mode: f.mode, jump_len_formula: f.jump,
+      alpha: (f.mode === "engineering") ? Number(f.alpha) : 1.0,
+      beta: (f.mode === "engineering") ? Number(f.beta) : 1.0,
     reaches: f.reaches.map(r=>({L:+r.L, i:+r.i, b:+r.b, m:+(r.m||0), n:+r.n})),
     downstream: f.down,
     h0: (f.down === "given_h") ? (f.downH==null?null:+f.downH) : null,
@@ -667,21 +729,37 @@ function drawProfile(){
   }
   const pad = {l:62,r:18,t:16,b:36};
   const rs = R.reaches;
-  const x0 = rs[0].x_start, xL = rs[rs.length-1].x_end;
+  const fullX0 = rs[0].x_start, fullXL = rs[rs.length-1].x_end;
+  /* 视窗：null 表示整条渠；放大后只画 {x0,x1} 区间 */
+  let x0 = fullX0, xL = fullXL;
+  if(state.view && state.view.x1 > state.view.x0){
+    x0 = Math.max(fullX0, state.view.x0);
+    xL = Math.min(fullXL, state.view.x1);
+    if(xL - x0 < 0.5){ x0 = fullX0; xL = fullXL; state.view = null; }
+  }
   let yMin=Infinity, yMax=-Infinity;
+  const inView = x => (x >= x0 - 1e-9 && x <= xL + 1e-9);
   for(const r of rs){
+    if(r.x_end < x0 || r.x_start > xL) continue;
     yMin = Math.min(yMin, r.z_b_start, r.z_b_end);
     yMax = Math.max(yMax, r.z_b_start, r.z_b_end);
     if(r.h0!=null) yMax = Math.max(yMax, r.z_b_start+r.h0, r.z_b_end+r.h0);
     yMax = Math.max(yMax, r.z_b_start+r.hc, r.z_b_end+r.hc);
   }
   for(const s of R.segments) for(let i=0;i<s.z_w.length;i++){
+    if(!inView(s.x[i])) continue;
     yMax = Math.max(yMax, s.z_w[i]); yMin = Math.min(yMin, s.z_b[i]);
   }
+  if(!isFinite(yMin) || !isFinite(yMax)){ yMin = 0; yMax = 1; }
   const spanY = Math.max(yMax-yMin, 0.5);
   yMin -= spanY*0.06; yMax += spanY*0.12;
   const X = x => pad.l + (x-x0)/((xL-x0)||1)*(w-pad.l-pad.r);
   const Y = z => h-pad.b - (z-yMin)/((yMax-yMin)||1)*(h-pad.t-pad.b);
+  /* 放大后把绘制限制在绘图区内，避免曲线溢出到坐标轴外 */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.l, pad.t-2, w-pad.l-pad.r, h-pad.t-pad.b+4);
+  ctx.clip();
 
   /* 网格 */
   ctx.strokeStyle="#eef1f5"; ctx.lineWidth=1;
@@ -904,6 +982,7 @@ function drawProfile(){
   }
 
   /* 纵横比 */
+  ctx.restore();
   const vScale=(h-pad.t-pad.b)/Math.max(yMax-yMin,1e-6);
   const hScale=(w-pad.l-pad.r)/Math.max(xL-x0,1);
   ctx.fillStyle="#a9b4bf"; ctx.font="11px -apple-system,Segoe UI,sans-serif";
@@ -1244,6 +1323,13 @@ async function send(){
       return (LAB[k]||k)+"="+v;
     });
 
+    /* 0) 出题：根据当前算例生成教学题与参考答案 */
+    if(r.act === "quiz"){
+      if(r.reply) bubble(r.reply, "ai", "助手");
+      renderQuiz(r.quiz || []);
+      return;
+    }
+
     /* 1) 提问 / 闲聊：直接回答，不追问参数 */
     if(r.act === "answer"){
       if(r.reply) bubble(r.reply, "ai", "助手");
@@ -1362,24 +1448,46 @@ async function applyHypothesis(slots, btn){
 }
 
 /* ---------------- 示例算例面板 ---------------- */
-async function loadPresets(){
-  try{
-    const j = await (await fetch('/api/presets')).json();
-    const groups = j.groups || [];
-    if(!groups.length){ $("#presetPanel").innerHTML = '<div class="empty">暂无示例</div>'; return; }
-    let html = '';
-    groups.forEach(g=>{
-      html += '<div class="pgroup"><div class="pgroup-h">'+g.name+'</div><div class="pchips">' +
-        g.items.map(it=>'<span class="pchip" data-key="'+it.key+'" title="'+(it.desc||'')+'">'+
-                        it.label+'</span>').join("") +
-        '</div></div>';
-    });
+let _presetGroups = null;
+
+/* 示例算例按断面过滤渲染（矩形 / 梯形切换，避免选项堆太多） */
+function renderPresetGroups(){
+  const sec = state.presetSec || "rectangular";
+  const panel = $("#presetPanel"); if(!panel) return;
+  const groups = (_presetGroups || [])
+    .map(g=>({name:g.name, items:g.items.filter(it=>(it.section||"rectangular")===sec)}))
+    .filter(g=>g.items.length);
+  if(!groups.length){ panel.innerHTML = '<div class="empty">该断面暂无示例</div>'; return; }
+  let html = '';
+  groups.forEach(g=>{
+    html += '<div class="pgroup"><div class="pgroup-h">'+g.name+'</div><div class="pchips">' +
+      g.items.map(it=>'<span class="pchip" data-key="'+it.key+'" title="'+(it.desc||'')+'">'+
+                      it.label+'</span>').join("") +
+      '</div></div>';
+  });
+  if(sec === "rectangular"){
     html += '<div class="pgroup"><div class="pgroup-h">随机生成（每次不同，均经内核验证）</div><div class="pchips">' +
       '<span class="pchip gen" data-gen="jump">🎲 随机水跃样例</span>' +
       '<span class="pchip gen" data-gen="outfall">🎲 随机水跌样例</span>' +
       '<span class="pchip gen" data-gen="drop">🎲 随机坡折水跌</span>' +
       '</div></div>';
-    $("#presetPanel").innerHTML = html;
+  }
+  panel.innerHTML = html;
+  bindPresetChips();
+}
+
+async function loadPresets(){
+  try{
+    const j = await (await fetch('/api/presets')).json();
+    _presetGroups = j.groups || [];
+    renderPresetGroups();
+  }catch(e){
+    $("#presetPanel").innerHTML = '<div class="empty">示例加载失败</div>';
+  }
+}
+
+function bindPresetChips(){
+  const panel = $("#presetPanel"); if(!panel) return;
 
     $("#presetPanel").querySelectorAll('.pchip[data-key]').forEach(el=>{
       el.onclick = async ()=>{
@@ -1415,9 +1523,6 @@ async function loadPresets(){
         finally{ el.style.opacity = "1"; }
       };
     });
-  }catch(e){
-    $("#presetPanel").innerHTML = '<div class="empty">示例加载失败</div>';
-  }
 }
 
 /* ---------------- 导出 ---------------- */
@@ -1443,7 +1548,18 @@ function exportCSV(){
 
 /* ---------------- 初始化与绑定 ---------------- */
 function bindForm(){
+  document.querySelectorAll("#presetSeg button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const sec = btn.dataset.sec;
+      if(sec === state.presetSec) return;
+      state.presetSec = sec;
+      document.querySelectorAll("#presetSeg button").forEach(b=>b.classList.toggle("on", b.dataset.sec===sec));
+      renderPresetGroups();
+    });
+  });
   $("#fQ").addEventListener("input", e=>{ state.form.Q = parseFloat(e.target.value)||0; markDirty(); });
+  $("#fAlpha").addEventListener("input", e=>{ state.form.alpha = parseFloat(e.target.value)||1.05; markDirty(); });
+  $("#fBeta").addEventListener("input", e=>{ state.form.beta = parseFloat(e.target.value)||1.05; markDirty(); });
   $("#fUpType").addEventListener("change", e=>{
     state.form.up = e.target.value;
     $("#fUpH").disabled = e.target.value!=="given_h";
@@ -1492,6 +1608,53 @@ function bindForm(){
   });
 }
 
+/* ---------------- 视窗：缩放与精确定位 ---------------- */
+function fullRange(){
+  const R = state.result; if(!R) return null;
+  return {x0: R.reaches[0].x_start, x1: R.reaches[R.reaches.length-1].x_end};
+}
+function syncXInput(){
+  const el = $("#xInput");
+  if(el && state.selectedX != null) el.value = Number(state.selectedX).toFixed(1);
+}
+function applyView(x0, x1){
+  const fr = fullRange(); if(!fr) return;
+  const full = fr.x1 - fr.x0;
+  const minSpan = Math.max(full * 0.02, 0.5);
+  x0 = Math.max(fr.x0, x0); x1 = Math.min(fr.x1, x1);
+  if(x1 - x0 < minSpan){
+    const c = (x0 + x1) / 2;
+    x0 = c - minSpan / 2; x1 = c + minSpan / 2;
+    if(x0 < fr.x0){ x0 = fr.x0; x1 = x0 + minSpan; }
+    if(x1 > fr.x1){ x1 = fr.x1; x0 = x1 - minSpan; }
+  }
+  state.view = (x1 - x0 >= full - 1e-6) ? null : {x0, x1};
+  drawProfile();
+}
+function zoomBy(k, anchorX){
+  const fr = fullRange(); if(!fr) return;
+  const v = state.view || {x0: fr.x0, x1: fr.x1};
+  const a = (anchorX == null) ? (v.x0 + v.x1) / 2
+                              : Math.min(Math.max(anchorX, v.x0), v.x1);
+  const span = (v.x1 - v.x0) * k;
+  const f = (a - v.x0) / ((v.x1 - v.x0) || 1);
+  applyView(a - span * f, a - span * f + span);
+}
+/* 输入 x 精确定位：图、横断面、数据一起跟上 */
+function goToX(x){
+  const fr = fullRange(); if(!fr) return;
+  if(!isFinite(x)){ bubble("请输入一个数字，例如 100","ai","助手"); return; }
+  x = Math.min(Math.max(x, fr.x0), fr.x1);
+  state.selectedX = x;
+  const v = state.view;
+  if(v && (x < v.x0 || x > v.x1)){
+    const w = v.x1 - v.x0;
+    applyView(x - w / 2, x + w / 2);
+  }
+  $("#profileTag").textContent = "已定位 x = " + x.toFixed(1) + " m";
+  drawProfile(); drawSection(); updateCtxChip(); syncXInput();
+}
+
 function bindCanvas(){
   const cv = $("#profile"), tip = $("#profileTip");
   cv.addEventListener("mousemove", ev=>{
@@ -1524,8 +1687,34 @@ function bindCanvas(){
     const x = g.x0 + (px-g.pad.l)/(g.w-g.pad.l-g.pad.r)*(g.xL-g.x0);
     state.selectedX = Math.min(Math.max(x, g.x0), g.xL);
     $("#profileTag").textContent = "已选 x = "+state.selectedX.toFixed(1)+" m";
-    drawProfile(); drawSection(); updateCtxChip();
+    drawProfile(); drawSection(); updateCtxChip(); syncXInput();
   });
+
+  /* 滚轮缩放（以鼠标位置为锚点） */
+  cv.addEventListener("wheel", ev=>{
+    if(!state.result) return;
+    ev.preventDefault();
+    const g = cv._geo; if(!g) return;
+    const r = cv.getBoundingClientRect();
+    const f = Math.min(Math.max((ev.clientX - r.left - g.pad.l) / (g.w - g.pad.l - g.pad.r), 0), 1);
+    zoomBy(ev.deltaY < 0 ? 0.8 : 1.25, g.x0 + f * (g.xL - g.x0));
+  }, {passive:false});
+
+  /* 双击图面复位 */
+  cv.addEventListener("dblclick", ()=>{ state.view = null; drawProfile(); });
+
+  /* 右上角：放大 / 缩小 / 复位 / x 精确输入 */
+  const zin = $("#zoomIn"), zout = $("#zoomOut"), zr = $("#zoomReset");
+  if(zin)  zin.addEventListener("click", ()=>zoomBy(0.7, state.selectedX));
+  if(zout) zout.addEventListener("click", ()=>zoomBy(1.4, state.selectedX));
+  if(zr)   zr.addEventListener("click", ()=>{ state.view = null; drawProfile(); });
+  const xi = $("#xInput");
+  if(xi){
+    xi.addEventListener("keydown", e=>{
+      if(e.key === "Enter"){ e.preventDefault(); goToX(parseFloat(xi.value)); }
+    });
+    xi.addEventListener("change", ()=>goToX(parseFloat(xi.value)));
+  }
 }
 
 /* 图上选中的点 → 对话上下文（图与对话互通） */
@@ -1611,6 +1800,7 @@ function renderChips(){
     if(kinds.has("critical")) chips.push("坡折处为什么正好是临界水深？");
     const rs = R.reaches || [];
     if(rs.length > 1) chips.push("两段之间是怎么衔接的？");
+    chips.push("请根据现有水面线试着出一些题目");
   }else{
     chips.push("怎么用？", "给我一个水跃样例", "给我一个坡折水跌样例");
   }
@@ -1618,11 +1808,14 @@ function renderChips(){
   holder.innerHTML =
     '<span class="chips-hint">猜你想问</span>' +
     '<span class="chip" id="chipDemo" title="恢复默认的两段变坡示例">▶ 载入两段变坡示例</span>' +
-    all.map(c=>'<span class="chip">'+c+'</span>').join("");
+    all.map(c=>'<span class="chip">'+c+'</span>').join("") +
+    '<span class="chip" id="chipX" title="输入里程 x，定位到该点查看横断面与数据">x = ? 处的水深 / Fr</span>';
   const demo = $("#chipDemo");
   if(demo) demo.onclick = ()=>loadDemo(true);
+  const cx = $("#chipX");
+  if(cx) cx.onclick = ()=>{ const xi = $("#xInput"); if(xi){ xi.focus(); xi.select(); } };
   holder.querySelectorAll(".chip").forEach(el=>{
-    if(el.id === "chipDemo") return;
+    if(el.id === "chipDemo" || el.id === "chipX") return;
     el.onclick = ()=>{ $("#chatInput").value = el.textContent; send(); };
   });
 }

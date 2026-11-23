@@ -46,7 +46,9 @@ def grouped():
             groups.append(seen[g])
         seen[g]["items"].append({"key": it["key"], "label": it["label"],
                                  "desc": it.get("desc", ""),
-                                 "expect_types": it.get("expect_types")})
+                                 "expect_types": it.get("expect_types"),
+                                 "section": "trapezoidal" if it["key"].endswith("_T")
+                                            else "rectangular"})
     return groups
 
 

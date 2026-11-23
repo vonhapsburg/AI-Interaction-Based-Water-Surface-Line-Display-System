@@ -117,6 +117,24 @@ def main():
           "已检查")
     lines.append("")
 
+    # ---------- 出题 ----------
+    lines.append("=== 按当前算例出题 ===")
+    code, s2 = req("/api/solve", {"overrides": TWO})
+    code, t5 = req("/api/turn", {"text": "请根据现有水面线试着出一些题目"})
+    quiz = t5.get("quiz") or []
+    check("识别为出题请求", t5.get("act") == "quiz", t5.get("act"))
+    check("生成了多道题", len(quiz) >= 3, len(quiz))
+    if quiz:
+        check("每题都有参考答案", all(q.get("a") for q in quiz),
+              [q.get("q") for q in quiz][:2])
+        check("答案含内核算出的水深",
+              any("h₀=" in (q.get("a") or "") for q in quiz), quiz[0].get("a"))
+        check("带解析", any((q.get("why") or "") for q in quiz),
+              (quiz[0].get("why") or "")[:40])
+        lines.append("  Q1: " + quiz[0]["q"])
+        lines.append("  答: " + quiz[0]["a"][:100])
+    lines.append("")
+
     lines.append("=" * 60)
     lines.append("通过 %d / %d" % (ok, total))
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
