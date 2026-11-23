@@ -415,6 +415,7 @@
         <span><i style="border-color:#c9741f"></i>急流段</span>
         <span class="dash"><i style="border-color:#7d8b99"></i>正常水深线 h₀</span>
         <span class="dash"><i style="border-color:#b23c4a"></i>临界水深线 h_c</span>
+        <span class="dash"><i style="border-color:#b23c4a;opacity:.45"></i>水跃跃长区（示意）</span>
         <span class="dash"><i style="border-color:#8b98a6"></i>渠底线</span>
       </div>
     </div>
@@ -927,11 +928,28 @@ function drawProfile(){
   for(const t of R.transitions){
     const zb = zbAt(t.x);
     if(t.kind==="jump" || t.kind==="jump_submerged" || t.kind==="jump_washed"){
-      const z1 = zb+(t.data.h1||0), z2 = zb+(t.data.h2||0);
+      const d = t.data || {};
+      const z1 = zb+(d.h1||0), z2 = zb+(d.h2||0);
       const y1=Y(z1), y2=Y(z2), px=X(t.x);
+      const yTop=Math.min(y1,y2), yBot=Math.max(y1,y2);
+      const Lj = Number(d.L_j || 0);
+      const pxe = X(Math.min(t.x + Lj, xL));
+      /* 跃长区间：浅红底 + 示意水面。
+         跃区内是急变流，内核按间断面处理（h1→h2 发生在同一 x），
+         这里只是把"水跃大约占多长"画出来，不代表积分结果。 */
+      if(Lj > 0 && pxe > px + 2){
+        ctx.fillStyle = "rgba(178,60,74,.10)";
+        ctx.fillRect(px, yTop, pxe-px, yBot-yTop);
+        ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle="#b23c4a"; ctx.lineWidth=1.8;
+        ctx.beginPath(); ctx.moveTo(px, y1);
+        ctx.bezierCurveTo(px+(pxe-px)*0.35, y1, px+(pxe-px)*0.65, y2, pxe, y2);
+        ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.setLineDash([2,3]); ctx.strokeStyle="rgba(178,60,74,.5)"; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(pxe, pad.t); ctx.lineTo(pxe, h-pad.b); ctx.stroke(); ctx.restore();
+      }
+      /* 跃前断面：模型真实的突变线 + 锯齿 */
       ctx.save(); ctx.setLineDash([4,3]); ctx.strokeStyle="#b23c4a"; ctx.lineWidth=1.4;
       ctx.beginPath(); ctx.moveTo(px,y1); ctx.lineTo(px,y2); ctx.stroke(); ctx.restore();
-      const yTop=Math.min(y1,y2), yBot=Math.max(y1,y2);
       const nz=Math.max(3, Math.round((yBot-yTop)/7));
       ctx.strokeStyle="#b23c4a"; ctx.lineWidth=2; ctx.beginPath();
       ctx.moveTo(px-6,yBot);
@@ -942,7 +960,15 @@ function drawProfile(){
       ctx.stroke();
       ctx.fillStyle="#b23c4a"; ctx.font="600 11.5px -apple-system,Segoe UI,sans-serif";
       ctx.textAlign="left"; ctx.textBaseline="middle";
-      ctx.fillText(t.kind==="jump"?"水跃 h₁→h₂":(t.kind==="jump_submerged"?"淹没水跃":"水跃出渠"), px+10, (yTop+yBot)/2);
+      const nm = t.kind==="jump" ? "水跃" : (t.kind==="jump_submerged" ? "淹没水跃" : "水跃出渠");
+      ctx.fillText(Lj > 0 ? (nm+"  L_j="+Lj.toFixed(2)+" m") : nm,
+                   Math.min(px+10, w-pad.r-120), yTop-10);
+      if(Lj > 0 && pxe > px + 2){
+        ctx.font="10.5px -apple-system,Segoe UI,sans-serif";
+        ctx.fillStyle="#8a5a2b";
+        ctx.textAlign="center"; ctx.textBaseline="top";
+        ctx.fillText("跃长示意", (px+pxe)/2, yBot+8);
+      }
     }
     if(t.kind==="outfall"){
       ctx.save(); ctx.setLineDash([4,3]); ctx.strokeStyle="#5b6b7b"; ctx.lineWidth=1.4;
