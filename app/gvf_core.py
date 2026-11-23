@@ -1001,6 +1001,93 @@ def _locate_jump(pr: Params, infos: List[ReachInfo],
                       note=note)
 
 
+def _fill_critical_gaps(pr: Params, infos: List[ReachInfo],
+                        nodes: List[Dict[str, Any]],
+                        chains: List[Dict[str, Any]],
+                        transitions: List[Transition],
+                        warnings: List[Warning],
+                        x0: float, xL: float, rounds: int = 3):
+    """多水跃（渐进实现）：坡折临界之后补一条急流链，并与下游缓流链对撞。
+
+    只处理"缺口上游端恰好是 *_to_steep 临界控制点"的情形。
+    单水跃工况本来没有缺口，因此不会被触发——这是既有结果不变的关键。
+    仍无法覆盖的缺口保留给 W_GAP 报告。
+    """
+    for _ in range(rounds):
+        segs = _build_segments(pr, infos, chains)
+        gaps = _coverage_gaps(segs, x0, xL)
+        if not gaps:
+            break
+        added = False
+        for lo, hi in gaps:
+            # 缺口里若含坡折临界点（缓/平/负 → 陡），把上游急流链延长到该点，
+            # 再从该点起一条急流链——这就是多跃位的第一跳与第二跳之间的衔接。
+            node = None
+            for n in nodes:
+                if n["join_type"].endswith("_to_steep") and lo < n["x"] < hi:
+                    node = n
+                    break
+            if node is None or node["control_h"] is None:
+                continue
+            hc_ctrl = float(node["control_h"])
+            up = None
+            for c in chains:
+                if c["direction"] > 0 and c["x"] and abs(float(c["x"][-1]) - lo) <= 1.0:
+                    up = c
+                    break
+            if up is None:
+                continue
+            if float(node["x"]) > float(up["x"][-1]) + 1e-9:
+                up["x"].append(float(node["x"]))
+                up["h"].append(hc_ctrl * (1.0 - 1e-9))
+            if not any(getattr(t, "kind", "") == "critical"
+                       and abs(float(t.x) - float(node["x"])) < 1e-6 for t in transitions):
+                transitions.append(Transition(
+                    kind="critical", x=float(node["x"]),
+                    reach_index=int(node["index"]) + 1,
+                    data={"hc": hc_ctrl, "Fr": 1.0},
+                    note="坡折临界控制（多跃位区间的中间控制点）"))
+            sx, sh, reason = _march_chain(pr, infos, float(node["x"]),
+                                          hc_ctrl * (1.0 - pr.hc_offset_rel), +1)
+            if len(sx) < 3:
+                continue
+            newc = {"direction": +1,
+                    "x": [float(v) for v in sx],
+                    "h": [float(v) for v in sh],
+                    "source": "critical_down", "reason": reason}
+            trial = chains + [newc]
+            subs = [c for c in trial if c["direction"] < 0]
+            tmp = []
+            tr = _locate_jump(pr, infos, [newc], subs, tmp)
+            if tr is None:
+                chains = trial
+                added = True
+                continue
+            if any(abs(float(t.x) - float(tr.x)) < 1e-6 for t in transitions):
+                continue
+            w_codes = {w.code for w in tmp}
+            if w_codes - {"W_OVER_CONSTRAINED"}:
+                warnings.extend(tmp)
+            transitions.append(tr)
+            chains = trial
+            added = True
+            if tr.kind == "jump":
+                kept = []
+                for c in chains:
+                    if c is newc:
+                        c2 = _trim_chain(c, tr.x, "left")
+                    elif c["direction"] < 0:
+                        c2 = _trim_chain(c, tr.x, "right")
+                    else:
+                        c2 = c
+                    if c2 is not None:
+                        kept.append(c2)
+                chains = kept
+        if not added:
+            break
+    return chains
+
+
 # =============================================================================
 # 11. 装配
 # =============================================================================
@@ -1236,6 +1323,10 @@ def solve(pr: Params) -> Result:
                 if t:
                     trimmed.append(t)
             chains = trimmed
+
+    # ---------- 12.3b 多跃位：坡折临界后的陡坡段补链 ----------
+    chains = _fill_critical_gaps(pr, infos, nodes, chains, transitions,
+                                 warnings, x0, xL)
 
     # ---------- 12.4 消解重叠并装配 ----------
     chains = _cut_overlaps(chains)
