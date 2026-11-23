@@ -102,7 +102,7 @@ def _summarize(res, params, key, label, note=""):
 
 
 # ---------------------------------------------------------------- 随机生成
-def random_jump(tries=400, rng=None):
+def random_jump(tries=400, rng=None, m=0.0):
     """随机找一组"陡转缓、渠内出现水跃"的参数。"""
     rng = rng or random.Random()
     for _ in range(tries):
@@ -115,7 +115,7 @@ def random_jump(tries=400, rng=None):
         L2 = round(rng.uniform(300, 600), -1)
         up_h = round(rng.uniform(0.20, 0.50), 2)
         down_h = round(rng.uniform(0.9, 1.8), 2)
-        p = _two(i1, i2, L1, L2, b, 0, 0, n, q, up_h=up_h, down_h=down_h,
+        p = _two(i1, i2, L1, L2, b, m, m, n, q, up_h=up_h, down_h=down_h,
                  down="given_h")
         res = _solve(p)
         if res is None or res.status != "ok":
@@ -130,7 +130,7 @@ def random_jump(tries=400, rng=None):
     return None
 
 
-def random_outfall(tries=200, rng=None):
+def random_outfall(tries=200, rng=None, m=0.0):
     """随机找一组"缓坡 + 渠末自由跌水"，末端必然出现水跌。"""
     rng = rng or random.Random()
     for _ in range(tries):
@@ -139,7 +139,7 @@ def random_outfall(tries=200, rng=None):
         n = round(rng.uniform(0.012, 0.020), 3)
         i = round(rng.uniform(0.0005, 0.002), 5)
         L = round(rng.uniform(300, 800), -1)
-        p = _one(i, L, b, 0, n, q, down="free_outfall")
+        p = _one(i, L, b, m, n, q, down="free_outfall")
         res = _solve(p)
         if res is None or res.status != "ok":
             continue
@@ -151,14 +151,20 @@ def random_outfall(tries=200, rng=None):
     return None
 
 
-def random_type(target, tries=200, rng=None):
+def random_type(target, tries=200, rng=None, m=0.0):
     """随机生成能复现指定型号的参数（在预设附近抖动，再用内核验证）。"""
     rng = rng or random.Random()
+    want_trap = m > 0
     base = None
     for it in catalog():
-        if it.get("expect_types") and it["expect_types"][0] == target:
+        if not (it.get("expect_types") and it["expect_types"][0] == target):
+            continue
+        is_trap = it["key"].endswith("_T")
+        if is_trap == want_trap:
             base = it
             break
+        if base is None:
+            base = it          # 没有对应断面的预设时退回已有的
     if base is None:
         return None
     # 临界坡对 Q/b/n 极敏感（i 必须正好等于 i_c），抖动后基本都跨区，
@@ -191,7 +197,7 @@ def random_type(target, tries=200, rng=None):
     return None
 
 
-def random_drop(tries=300, rng=None):
+def random_drop(tries=300, rng=None, m=0.0):
     """随机找一组"缓坡转陡坡、坡折处临界控制形成跌水"的参数。"""
     rng = rng or random.Random()
     for _ in range(tries):
@@ -202,7 +208,7 @@ def random_drop(tries=300, rng=None):
         i2 = round(rng.uniform(0.010, 0.050), 4)
         L1 = round(rng.uniform(200, 500), -1)
         L2 = round(rng.uniform(200, 400), -1)
-        p = _two(i1, i2, L1, L2, b, 0, 0, n, q)
+        p = _two(i1, i2, L1, L2, b, m, m, n, q)
         res = _solve(p)
         if res is None or res.status != "ok":
             continue
@@ -217,17 +223,18 @@ def random_drop(tries=300, rng=None):
     return None
 
 
-def random_combo(kind, rng=None):
+def random_combo(kind, rng=None, section="rectangular"):
     rng = rng or random.Random()
+    mm = 1.5 if section == "trapezoidal" else 0.0
     if kind == "jump":
-        return random_jump(rng=rng)
+        return random_jump(rng=rng, m=mm)
     if kind == "outfall":
-        return random_outfall(rng=rng)
+        return random_outfall(rng=rng, m=mm)
     if kind == "drop":
-        return random_drop(rng=rng)
+        return random_drop(rng=rng, m=mm)
     if kind in ("M1", "M2", "M3", "S1", "S2", "S3", "C1", "C3",
                 "H2", "H3", "A2", "A3"):
-        return random_type(kind, rng=rng)
+        return random_type(kind, rng=rng, m=mm)
     return from_catalog(kind)
 
 

@@ -402,7 +402,7 @@
     <div class="card">
       <div class="card-h">纵剖面图
       <div class="viewctl">
-        <span class="tag" id="profileTag">点击图中任意位置查看横断面</span>
+        <span class="tag" id="profileTag">点击图中任意位置查看横断面</span><span class="tag" id="zoomTag"></span>
         <span class="xgo">x = <input id="xInput" type="number" step="1" placeholder="100"> m</span>
         <button class="zoomb" id="zoomOut" title="缩小">−</button>
         <button class="zoomb" id="zoomIn" title="放大">＋</button>
@@ -1458,20 +1458,18 @@ function renderPresetGroups(){
     .map(g=>({name:g.name, items:g.items.filter(it=>(it.section||"rectangular")===sec)}))
     .filter(g=>g.items.length);
   if(!groups.length){ panel.innerHTML = '<div class="empty">该断面暂无示例</div>'; return; }
-  let html = '';
+  const secCn = sec === "trapezoidal" ? "梯形" : "矩形";
+  let html = '<div class="pgroup"><div class="pgroup-h">随机生成（' + secCn + '断面，每次不同，均经内核验证）</div><div class="pchips">' +
+    '<span class="pchip gen" data-gen="jump">🎲 随机水跃样例</span>' +
+    '<span class="pchip gen" data-gen="outfall">🎲 随机水跌样例</span>' +
+    '<span class="pchip gen" data-gen="drop">🎲 随机坡折水跌</span>' +
+    '</div></div>';
   groups.forEach(g=>{
     html += '<div class="pgroup"><div class="pgroup-h">'+g.name+'</div><div class="pchips">' +
       g.items.map(it=>'<span class="pchip" data-key="'+it.key+'" title="'+(it.desc||'')+'">'+
                       it.label+'</span>').join("") +
       '</div></div>';
   });
-  if(sec === "rectangular"){
-    html += '<div class="pgroup"><div class="pgroup-h">随机生成（每次不同，均经内核验证）</div><div class="pchips">' +
-      '<span class="pchip gen" data-gen="jump">🎲 随机水跃样例</span>' +
-      '<span class="pchip gen" data-gen="outfall">🎲 随机水跌样例</span>' +
-      '<span class="pchip gen" data-gen="drop">🎲 随机坡折水跌</span>' +
-      '</div></div>';
-  }
   panel.innerHTML = html;
   bindPresetChips();
 }
@@ -1512,7 +1510,7 @@ function bindPresetChips(){
         const kind = el.dataset.gen;
         el.style.opacity = "0.5";
         try{
-          const r = await (await fetch('/api/generate?kind='+encodeURIComponent(kind))).json();
+          const r = await (await fetch('/api/generate?kind='+encodeURIComponent(kind)+'&section='+(state.presetSec||'rectangular'))).json();
           if(r.item){
             bubble(r.reply || "已生成一组参数。","ai","助手");
             await applyHypothesis(r.item.params, null);
@@ -1630,6 +1628,19 @@ function applyView(x0, x1){
   }
   state.view = (x1 - x0 >= full - 1e-6) ? null : {x0, x1};
   drawProfile();
+  updateViewTag();
+}
+
+/* 缩放状态直接用文字反馈，避免"点了没反应"的错觉 */
+function updateViewTag(){
+  const fr = fullRange(); const el = $("#zoomTag"); if(!fr || !el) return;
+  if(state.view){
+    const k = (fr.x1 - fr.x0) / (state.view.x1 - state.view.x0);
+    el.textContent = "当前 " + state.view.x0.toFixed(1) + "–" + state.view.x1.toFixed(1) +
+                     " m（放大 " + k.toFixed(1) + "×）";
+  }else{
+    el.textContent = "全渠 " + fr.x0.toFixed(0) + "–" + fr.x1.toFixed(0) + " m";
+  }
 }
 function zoomBy(k, anchorX){
   const fr = fullRange(); if(!fr) return;
@@ -1701,13 +1712,13 @@ function bindCanvas(){
   }, {passive:false});
 
   /* 双击图面复位 */
-  cv.addEventListener("dblclick", ()=>{ state.view = null; drawProfile(); });
+  cv.addEventListener("dblclick", ()=>{ state.view = null; drawProfile(); updateViewTag(); });
 
   /* 右上角：放大 / 缩小 / 复位 / x 精确输入 */
   const zin = $("#zoomIn"), zout = $("#zoomOut"), zr = $("#zoomReset");
   if(zin)  zin.addEventListener("click", ()=>zoomBy(0.7, state.selectedX));
   if(zout) zout.addEventListener("click", ()=>zoomBy(1.4, state.selectedX));
-  if(zr)   zr.addEventListener("click", ()=>{ state.view = null; drawProfile(); });
+  if(zr)   zr.addEventListener("click", ()=>{ state.view = null; drawProfile(); updateViewTag(); });
   const xi = $("#xInput");
   if(xi){
     xi.addEventListener("keydown", e=>{

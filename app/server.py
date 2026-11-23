@@ -517,7 +517,8 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/generate":
             qs = parse_qs(u.query)
             kind = qs.get("kind", ["jump"])[0]
-            item = generator.random_combo(kind)
+            section = qs.get("section", ["rectangular"])[0]
+            item = generator.random_combo(kind, section=section)
             if item is None:
                 return self._json({"error": "没能生成符合条件的算例，请换个说法"}, 404)
             return self._json({"ok": True, "item": item,
