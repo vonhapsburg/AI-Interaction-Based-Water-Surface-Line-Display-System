@@ -83,15 +83,30 @@
     </section>
 
     <section class="card" style="margin-top:12px;">
-      <div class="card-h">诊断</div>
+      <div class="card-h">诊断 <span class="tag">格式校验 ≠ 物理验证</span></div>
       <div class="card-b">
         <div class="kv">
-          <div><span>质量守恒</span><b id="dMass">—</b></div>
-          <div><span>最大库朗</span><b id="dC">—</b></div>
+          <div><span>格式校验（质量）</span><b id="dMass">—</b></div>
+          <div><span>库朗 |v|+c</span><b id="dC">—</b></div>
           <div><span>时间步</span><b id="dDt">—</b></div>
           <div><span>步数</span><b id="dSteps">—</b></div>
+          <div><span>边界峰值误差</span><b id="dBound">—</b></div>
+          <div><span>下游边界 h</span><b id="dHdn">—</b></div>
         </div>
         <div class="note" id="dMeta"></div>
+        <div class="note" style="color:#8b98a6">
+          说明：质量误差来自守恒型离散的代数恒等，只能证明"实现了守恒格式"，不证明物理正确。
+          物理正确性看下面的稳态回归。
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px;">
+      <div class="card-h">物理验证 · 稳态回归 <span class="tag">与恒定流内核逐点对比</span></div>
+      <div class="card-b">
+        <button id="verify" style="margin:0 0 8px">跑稳态回归（约 5 s）</button>
+        <div class="note" id="verifyMsg">边界保持恒定 40 h，应与 gvf_core 的恒定解一致。</div>
+        <canvas id="cVerify" height="150" style="margin-top:8px;display:none"></canvas>
       </div>
     </section>
 
@@ -135,7 +150,10 @@
         <b>忽略惯性项</b>（当地加速度、迁移加速度），即教材 8.10.3 的「瞬时流态法」。
         适用于缓变洪水演进；<b>不支持溃坝、涌潮、闸门急变</b>等强非恒定工况（需全圣维南方程 + 激波捕捉）。
         断面限矩形/梯形棱柱体；边界限上游流量过程线与下游给定水位。
-        数值为显式推进，时间步按扩散稳定性自适应，诊断栏给出实际库朗数与质量守恒误差。
+        <br>
+        <b>一个必须说清的理论限制</b>：扩散波是<b>抛物型</b>方程，扰动传播速度在数学上是<b>无穷大</b>，
+        所以本页<b>不能</b>演示"急流时下游扰动传不上去"这类特征线现象——那需要双曲型的全圣维南方程。
+        另外，稳态回归的偏差主要来自扩散波对回水的线性化近似（非数值误差）。
       </div>
     </section>
   </main>
@@ -266,6 +284,20 @@ function drawHydro(R){
     st.Q.forEach((q,i)=>{ const xx = X(T[i]); i?ctx.lineTo(xx,Y(q)):ctx.moveTo(xx,Y(q)); });
     ctx.strokeStyle = COL[k % COL.length]; ctx.lineWidth = k===0?2.6:1.9; ctx.stroke();
   });
+  // 输入边界（给定上游过程线）——灰色虚线，让"削减滞后"有参照
+  const Qup = t => {
+    const tp = R.meta.t_peak, tb = R.meta.t_base, q0 = R.meta.Q0, qp = R.meta.Qpeak;
+    if(t <= tp) return q0 + (qp-q0)*t/tp;
+    if(t <= tb) return qp - (qp-q0)*(t-tp)/(tb-tp);
+    return q0;
+  };
+  ctx.save(); ctx.setLineDash([6,4]); ctx.strokeStyle = "#9aa7b3"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  T.forEach((tt,i)=>{ const xx=X(tt), yy=Y(Qup(tt*3600)); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); });
+  ctx.stroke(); ctx.restore();
+  ctx.fillStyle = "#8b98a6"; ctx.font = "11px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("虚线：给定上游边界 Q(0,t)", pad.l+6, pad.t+12);
+
   // 图例
   ctx.font = "11px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   R.stations.forEach((st,k)=>{
@@ -318,13 +350,28 @@ function drawLoop(R){
   Q.forEach((q,i)=>{ const xx=X(q), yy=Y(H[i]); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); });
   ctx.strokeStyle = "#b23c4a"; ctx.lineWidth = 2.2; ctx.stroke();
   // 起点/峰值
-  ctx.fillStyle = "#b23c4a";
-  ctx.beginPath(); ctx.arc(X(Q[0]), Y(H[0]), 3.5, 0, Math.PI*2); ctx.fill();
   let ip=0; Q.forEach((q,i)=>{ if(q>Q[ip]) ip=i; });
-  ctx.beginPath(); ctx.arc(X(Q[ip]), Y(H[ip]), 3.5, 0, Math.PI*2); ctx.fill();
+  // 同一流量下的涨水/落水两点 + 稳定值（起点）——三点标注
+  const qRef = Q[0] + 0.5*(Q[ip]-Q[0]);
+  let iR=-1, iF=-1;
+  for(let i=0;i<ip;i++){ if(Q[i] >= qRef){ iR=i; break; } }
+  for(let i=ip;i<Q.length;i++){ if(Q[i] <= qRef){ iF=i; break; } }
+  const hSteady = H[0];
+  ctx.beginPath(); ctx.arc(X(Q[0]), Y(hSteady), 3.5, 0, Math.PI*2); ctx.fill();
   ctx.font = "11px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText("涨水", X(Q[0])+6, Y(H[0])-6);
-  ctx.fillText("峰值", X(Q[ip])+6, Y(H[ip])-6);
+  ctx.fillText("稳定值 h=" + hSteady.toFixed(3), X(Q[0])+6, Y(hSteady)+14);
+  if(iR>=0 && iF>=0){
+    ctx.fillStyle = "#c9741f";
+    ctx.beginPath(); ctx.arc(X(Q[iR]), Y(H[iR]), 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillText("涨水 h=" + H[iR].toFixed(3), X(Q[iR])+6, Y(H[iR])-6);
+    ctx.fillStyle = "#2f7d54";
+    ctx.beginPath(); ctx.arc(X(Q[iF]), Y(H[iF]), 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillText("落水 h=" + H[iF].toFixed(3), X(Q[iF])+6, Y(H[iF])+14);
+  }
+  let ipk=0; Q.forEach((q,i)=>{ if(q>Q[ipk]) ipk=i; });
+  ctx.fillStyle = "#b23c4a";
+  ctx.beginPath(); ctx.arc(X(Q[ipk]), Y(H[ipk]), 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillText("峰值", X(Q[ipk])+6, Y(H[ipk])-6);
 
   ctx.strokeStyle = "#c3ccd5";
   ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
@@ -340,13 +387,17 @@ function drawDiag(R){
   $("#dC").textContent = d.max_courant.toFixed(3);
   $("#dDt").textContent = d.dt.toFixed(2) + " s";
   $("#dSteps").textContent = d.steps;
+  $("#dBound").textContent = (d.boundary_peak_err*100).toFixed(2) + "%";
+  $("#dHdn").textContent = d.h_dn_used.toFixed(3) + (d.h_dn_is_normal ? "（正常水深）" : "（给定）");
   const A0 = m.h_n * (m.b + m.m * m.h_n);
   const v0 = m.Q0 / A0;
   $("#dMeta").innerHTML =
-    "正常水深 h₀=" + m.h_n.toFixed(3) + " m；流速 v₀=" + v0.toFixed(3) +
-    " m/s；运动波速 c_k=" + m.c_k.toFixed(3) + " m/s（c_k/v₀=" + (m.c_k/v0).toFixed(2) +
-    "，仅宽浅矩形才接近 5/3）<br>网格 Δx=" + d.dx + " m，时间步 Δt=" + d.dt + " s，" +
-    "库朗数 " + d.max_courant.toFixed(3);
+    "特征波速三段式：c_k(h₀)=" + d.c_k_h0.toFixed(3) +
+    " m/s（均匀流参考） · c_k(峰值水深)=" + d.c_k_peak.toFixed(3) +
+    " m/s · 实测等效=" + d.c_k_measured.toFixed(3) + " m/s<br>" +
+    "v₀=" + v0.toFixed(3) + " m/s，c_k(h₀)/v₀=" + (d.c_k_h0/v0).toFixed(2) +
+    "（仅宽浅矩形接近 5/3；梯形需数值求 dQ/dh）<br>" +
+    "网格 Δx=" + d.dx + " m，Δt=" + d.dt + " s，库朗按 |v|+c 估计 " + d.max_courant.toFixed(3);
   const tb = $("#peakTable"); tb.innerHTML = "";
   R.stations.forEach(st=>{
     const tr = document.createElement("tr");
@@ -371,6 +422,60 @@ function drawDiag(R){
 }
 
 $("#run").addEventListener("click", runCase);
+
+/* 稳态回归：与恒定流内核逐点对比（外部锚点，不是自证） */
+async function runVerify(){
+  const btn = $("#verify"); btn.disabled = true;
+  $("#verifyMsg").textContent = "计算中（恒定边界跑 40 h）…";
+  try{
+    const auto = $("#hdn").value.trim() === "auto";
+    const hn = (last && last.meta) ? last.meta.h_n : null;
+    const payload = {
+      L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+      i0: +$("#i0").value, Q: +$("#Q0").value,
+      /* auto 时故意取 1.25h₀，形成 M1 壅水——均匀流对比是平凡情形，验不出东西 */
+      h_dn: auto ? (hn ? 1.25*hn : null) : +$("#hdn").value
+    };
+    const r = await (await fetch("/api/unsteady/verify", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    })).json();
+    if(!r.ok){ $("#verifyMsg").textContent = "失败：" + (r.error || "未知"); return; }
+    $("#verifyMsg").innerHTML =
+      "下游边界 h=" + r.h_dn.toFixed(3) + " m" + (auto ? "（取 1.25h₀ 形成 M1 壅水）" : "") +
+      "；与 <code>gvf_core</code> 恒定解比较：平均偏差 <b>" +
+      (r.mean*100).toFixed(2) + "%</b>，最大 " + (r.max*100).toFixed(2) +
+      "%（x=" + r.x_max.toFixed(0) + " m）。判据：平均 &lt;2%、最大 &lt;4%。";
+    drawVerify(r);
+  }catch(e){
+    $("#verifyMsg").textContent = "请求失败：" + e.message;
+  }finally{ btn.disabled = false; }
+}
+
+function drawVerify(r){
+  const cv = $("#cVerify"); cv.style.display = "block";
+  const {ctx, w, h} = setup(cv, 150);
+  const pad = {l:52,r:14,t:12,b:26};
+  const x = r.x, a = r.unsteady, b = r.steady;
+  let ymin = Math.min(...a, ...b), ymax = Math.max(...a, ...b);
+  const sp = Math.max(ymax-ymin, 0.05); ymin -= sp*0.2; ymax += sp*0.2;
+  const X = v => pad.l + (v-x[0])/(x[x.length-1]-x[0] || 1)*(w-pad.l-pad.r);
+  const Y = v => h-pad.b - (v-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
+  ctx.beginPath();
+  x.forEach((v,i)=>{ i?ctx.lineTo(X(v),Y(b[i])):ctx.moveTo(X(v),Y(b[i])); });
+  ctx.strokeStyle = "#b23c4a"; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath();
+  x.forEach((v,i)=>{ i?ctx.lineTo(X(v),Y(a[i])):ctx.moveTo(X(v),Y(a[i])); });
+  ctx.strokeStyle = "#2e6da4"; ctx.lineWidth = 1.6; ctx.setLineDash([5,4]); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = "10.5px sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "#b23c4a";
+  ctx.fillText("gvf_core 恒定解", pad.l+4, pad.t+10);
+  ctx.fillStyle = "#2e6da4"; ctx.fillText("扩散波稳态", pad.l+4, pad.t+24);
+  ctx.strokeStyle = "#c3ccd5";
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+}
+
+$("#verify").addEventListener("click", runVerify);
 window.addEventListener("resize", ()=>{ if(last) drawAll(last); });
 runCase();
 </script>

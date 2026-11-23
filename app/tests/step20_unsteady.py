@@ -153,6 +153,25 @@ def main():
         check("返回 6 个时刻快照", len(rr["t_snap_hours"]) >= 5, rr["t_snap_hours"])
         check("返回 5 个断面过程线", len(rr["stations"]) == 5, len(rr["stations"]))
         check("梯形断面参数生效", abs(rr["meta"]["m"] - 1.5) < 1e-9, rr["meta"]["m"])
+        d2 = rr["diagnostics"]
+        check("特征量三段式齐全",
+              all(k in d2 for k in ("c_k_h0", "c_k_peak", "c_k_measured")),
+              (d2.get("c_k_h0"), d2.get("c_k_peak"), d2.get("c_k_measured")))
+        check("峰值处波速大于 h0 处（解释了峰现偏差）",
+              d2["c_k_peak"] > d2["c_k_h0"], (d2["c_k_h0"], d2["c_k_peak"]))
+        check("报出边界峰值误差", d2["boundary_peak_err"] < 0.02,
+              "%.2f%%" % (d2["boundary_peak_err"] * 100))
+        check("报出下游边界实际取值", d2["h_dn_used"] > 0, d2["h_dn_used"])
+
+    # 稳态回归接口（带真实回水，不是平凡情形）
+    code, v = req("/api/unsteady/verify", {
+        "L": 10000, "b": 5, "m": 0, "n": 0.015, "i0": 0.001, "Q": 10,
+        "h_dn": round(1.25 * hn, 4)})
+    check("稳态回归接口可用", code == 200 and v.get("ok"), v.get("error"))
+    if v.get("ok"):
+        check("回归平均偏差 < 2%", v["mean"] < 0.02, "%.2f%%" % (v["mean"] * 100))
+        check("回归最大偏差 < 4%", v["max"] < 0.04, "%.2f%%" % (v["max"] * 100))
+        lines.append("  稳态回归：平均 %.2f%%，最大 %.2f%%" % (v["mean"] * 100, v["max"] * 100))
     code, p = req_raw("/unsteady.html")
     lines.append("  页面状态 %s" % code)
     check("独立页面可访问", code == 200)

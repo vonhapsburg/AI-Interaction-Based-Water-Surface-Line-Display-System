@@ -600,6 +600,59 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
+        # ---- 非恒定流稳态回归：与恒定流内核逐点对比（外部锚点） ----
+        if path == "/api/unsteady/verify":
+            try:
+                from unsteady import solver as us
+                from agent import adapter as _ad
+                import numpy as _np
+
+                def vnum(k, d):
+                    try:
+                        v = body.get(k, d)
+                        return d if v in (None, "", "auto") else float(v)
+                    except (TypeError, ValueError):
+                        return d
+
+                L = vnum("L", 10000.0)
+                b = vnum("b", 5.0)
+                m = vnum("m", 0.0)
+                n = vnum("n", 0.015)
+                i0 = vnum("i0", 0.001)
+                Q = vnum("Q", vnum("Q0", 10.0))
+                hn = us.normal_depth(b, m, n, i0, Q)
+                hd = body.get("h_dn")
+                h_dn = hn if hd in (None, "", "auto") else float(hd)
+
+                x1, h1 = us.steady(b=b, m=m, n=n, i0=i0, Q=Q, h_dn=h_dn,
+                                   L=L, Nx=61, hours=40.0)
+                slots = {"Q": Q, "mode": "teaching",
+                         "reaches": [{"L": L, "i": i0, "b": b, "m": m, "n": n}],
+                         "downstream": "given_h", "h0": h_dn, "upstream": "none"}
+                a = _ad.build({"slots": slots, "warnings": [], "normalized": ""})
+                res = gvf_core.solve(a["params"])
+                sg = res.segments[0]
+                xs = _np.asarray(sg.x, float)
+                hs = _np.asarray(sg.h, float)
+                o = _np.argsort(xs)
+                hg = _np.interp(x1, xs[o], hs[o])
+                dev = _np.abs(h1 - hg) / _np.maximum(hg, 1e-9)
+                idx = int(_np.argmax(dev))
+                step = max(1, len(x1) // 80)
+                return self._json({
+                    "ok": True,
+                    "h_dn": round(float(h_dn), 4),
+                    "mean": round(float(dev.mean()), 6),
+                    "max": round(float(dev.max()), 6),
+                    "x_max": round(float(x1[idx]), 1),
+                    "x": [round(float(v), 1) for v in x1[::step]],
+                    "unsteady": [round(float(v), 4) for v in h1[::step]],
+                    "steady": [round(float(v), 4) for v in hg[::step]],
+                })
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
         # ---- 清空会话 ----
         if path == "/api/reset":
             with LOCK:

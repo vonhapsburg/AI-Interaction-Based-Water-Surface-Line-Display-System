@@ -87,7 +87,7 @@ def _upstream_h(b, m, n, i0, Qup, h1, dx):
 def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q0=10.0, Qpeak=30.0, t_peak=3600.0, t_base=7200.0, t_end=None,
         h_dn=None, Nx=121, snap_hours=None, station_fracs=None,
-        safety=0.4, max_steps=200000):
+        safety=0.7, max_steps=200000):
     i0 = max(float(i0), 1e-6)
     L = float(L)
     Q0 = float(max(Q0, 1e-6))
@@ -206,6 +206,11 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     total_in = max(abs(inflow), 1e-9)
     mass_err = abs(d_store - net_in) / total_in
 
+    # 特征量：c_k 在 h0 / 峰值水深处的值，以及实测等效波速
+    h_peak0 = normal_depth(b, m, n, i0, Qpeak)
+    ck_h0 = float(kinematic_speed(b, m, n, i0, np.array([h_n0]))[0])
+    ck_pk = float(kinematic_speed(b, m, n, i0, np.array([h_peak0]))[0])
+
     keep = max(1, len(t_hist) // 500)
     T = [round(v, 1) for v in t_hist[::keep]]
     stations_out = []
@@ -221,6 +226,12 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "peak_t": round(float(t_hist[ipk]), 1),
         })
 
+    st0, st1 = stations_out[0], stations_out[-1]
+    travel = st1["peak_t"] - st0["peak_t"]
+    dx_meas = x[stations[-1]] - x[stations[0]]
+    ck_meas = (dx_meas / travel) if travel > 1e-6 else 0.0
+    bnd_peak_err = abs(st0["peak_Q"] - Qpeak) / max(Qpeak, 1e-9)
+
     return {
         "x": [round(float(v), 2) for v in x],
         "t": T,
@@ -233,10 +244,18 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "mass_err": round(float(mass_err), 6),
             "storage_change": round(d_store, 2),
             "net_inflow": round(net_in, 2),
+            "boundary_peak_err": round(float(bnd_peak_err), 5),
+            "c_k_h0": round(ck_h0, 4),
+            "c_k_peak": round(ck_pk, 4),
+            "c_k_measured": round(float(ck_meas), 4),
+            "h_peak_normal": round(float(h_peak0), 4),
+            "h_dn_used": round(float(h_dn), 4),
+            "h_dn_is_normal": bool(h_dn is not None and abs(h_dn - h_n0) < 1e-9),
         },
         "meta": {
             "L": L, "b": b, "m": m, "n": n, "i0": i0,
-            "Q0": Q0, "Qpeak": Qpeak, "h_n": round(float(h_n0), 5),
+            "Q0": Q0, "Qpeak": Qpeak, "t_peak": t_peak, "t_base": t_base,
+            "h_n": round(float(h_n0), 5),
             "h_dn": round(float(h_dn), 5),
             "c_k": round(float(kinematic_speed(b, m, n, i0, h_n0)), 5),
         },
