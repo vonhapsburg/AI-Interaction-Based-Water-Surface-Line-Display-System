@@ -383,6 +383,8 @@ def zone_of(h: float, h0: Optional[float], hc: float, slope_class: str,
         return None, "critical", "critical"
 
     if slope_class == "mild":
+        if h0 is None:
+            raise ValueError("缓坡段正常水深缺失，无法判别流区")
         if h > h0:
             return 1, "M1", "subcritical"
         if h > hc:
@@ -566,7 +568,8 @@ def jump_energy_loss(sec: Section, h1: float, h2: float, Q: float,
         note = ""
     else:
         dE = max(E1 - E2, 0.0)
-        note = "梯形断面，ΔE 由断面比能差计算，属近似处理"
+        note = ("梯形断面：共轭水深由动量方程求得，ΔE 按断面比能差计算；"
+                "近似的是跃长经验式（按矩形公式套用）")
     Kj = dE / E1 if E1 > 0 else 0.0
     return dE, Kj, note
 
@@ -611,7 +614,11 @@ def _build_nodes(pr: Params, infos: List[ReachInfo]) -> List[Dict[str, Any]]:
     for j in range(len(infos) - 1):
         a, b = infos[j], infos[j + 1]
         if a.slope_class != "steep" and b.slope_class == "steep":
-            jt = "mild_to_steep"
+            # 平坡/负坡接陡坡在控制上同为"坡折临界"，但事件名要分开，
+            # 否则报告里会把平坡说成缓坡。
+            jt = {"mild": "mild_to_steep", "critical": "critical_to_steep",
+                  "horizontal": "flat_to_steep", "adverse": "adverse_to_steep"}.get(
+                      a.slope_class, "mild_to_steep")
         elif a.slope_class == "steep" and b.slope_class != "steep":
             jt = "steep_to_mild"
         elif a.slope_class == "steep":
@@ -621,7 +628,7 @@ def _build_nodes(pr: Params, infos: List[ReachInfo]) -> List[Dict[str, Any]]:
         nodes.append({
             "index": j, "x": a.x_end, "z_b": a.z_b_end, "join_type": jt,
             "upstream_reach": j, "downstream_reach": j + 1,
-            "control_h": b.hc if jt == "mild_to_steep" else None,
+            "control_h": b.hc if jt.endswith("_to_steep") else None,
         })
     return nodes
 
@@ -881,6 +888,10 @@ def _locate_jump(pr: Params, infos: List[ReachInfo],
     lo = max(float(xs_s[0]), float(xs_m[0]))
     hi = min(float(xs_s[-1]), float(xs_m[-1]))
     if hi - lo <= 1e-6:
+        warnings.append(Warning(
+            "W_NO_OVERLAP", "warn", "global",
+            "急流链与缓流链在里程上没有重叠区间，未能定位水跃",
+            hint="上下游控制未相遇：请延长渠段或检查边界是否合理", x=lo))
         return None
 
     cache: Dict[Tuple[int, float], Optional[float]] = {}
@@ -901,6 +912,20 @@ def _locate_jump(pr: Params, infos: List[ReachInfo],
 
     grid = np.linspace(hi, lo, 240)
     vals = [resid(float(x)) for x in grid]
+
+    # 先统计残差变号次数：多处变号说明可能存在多个跃位。
+    # 当前求解结构是"一条急流链 + 一条缓流链对撞一次"，只能报告第一处，
+    # 这里至少要把"还有别处"说出来，不能静默丢掉。
+    crossings = [i for i in range(len(grid) - 1)
+                 if not (math.isnan(vals[i]) or math.isnan(vals[i + 1]))
+                 and vals[i] * vals[i + 1] < 0.0]
+    if len(crossings) > 1:
+        warnings.append(Warning(
+            "W_MULTI_JUMP", "warn", "global",
+            "型线在该区间出现 %d 处残差变号，可能存在多个水跃；"
+            "当前模型只报告最靠下游的一处" % len(crossings),
+            hint="如需多跃位解，请分段计算或等待多水跃求解器",
+            x=float(grid[crossings[1]])))
 
     root = None
     for i in range(len(grid) - 1):
@@ -1155,7 +1180,7 @@ def solve(pr: Params) -> Result:
             anchor_x, anchor_h, anchor_src = x0, infos[0].h0, "upstream"
         else:
             for nd in nodes:
-                if nd["join_type"] == "mild_to_steep" and x0 < nd["x"] <= covered_left + 1e-9:
+                if nd["join_type"].endswith("_to_steep") and x0 < nd["x"] <= covered_left + 1e-9:
                     anchor_x, anchor_h, anchor_src = nd["x"], nd["control_h"], "critical"
                     break
 
