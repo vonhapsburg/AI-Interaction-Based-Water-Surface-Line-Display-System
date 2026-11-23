@@ -46,7 +46,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {
@@ -322,7 +321,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {
@@ -434,9 +432,7 @@
     "h2": 1.021180869711529
    }
   ],
-  "warnings": [
-   "W_NO_OVERLAP"
-  ],
+  "warnings": [],
   "key_numbers": {
    "Q": 10.0,
    "alpha": 1.0,
@@ -998,8 +994,7 @@
   ],
   "warnings": [
    "W_ASSUMED_CRITICAL_INLET",
-   "W_DOWNSTREAM_SUPERCRITICAL",
-   "W_NO_OVERLAP"
+   "W_DOWNSTREAM_SUPERCRITICAL"
   ],
   "key_numbers": {
    "Q": 10.0,
@@ -1497,7 +1492,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {
@@ -1634,7 +1628,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {
@@ -2310,8 +2303,7 @@
   ],
   "warnings": [
    "W_ASSUMED_CRITICAL_INLET",
-   "W_DOWNSTREAM_SUPERCRITICAL",
-   "W_NO_OVERLAP"
+   "W_DOWNSTREAM_SUPERCRITICAL"
   ],
   "key_numbers": {
    "Q": 10.0,
@@ -2809,7 +2801,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {
@@ -2946,7 +2937,6 @@
    }
   ],
   "warnings": [
-   "W_NO_OVERLAP",
    "W_OUTFALL_SUPERCRITICAL"
   ],
   "key_numbers": {

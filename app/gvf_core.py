@@ -1085,6 +1085,10 @@ def _fill_critical_gaps(pr: Params, infos: List[ReachInfo],
                 chains = kept
         if not added:
             break
+    # 缺口若已全部补齐，之前"无重叠/未覆盖"的告警就不再成立，去掉避免误导
+    if not _coverage_gaps(_build_segments(pr, infos, chains), x0, xL):
+        warnings[:] = [w for w in warnings
+                       if w.code not in ("W_NO_OVERLAP", "W_GAP")]
     return chains
 
 
