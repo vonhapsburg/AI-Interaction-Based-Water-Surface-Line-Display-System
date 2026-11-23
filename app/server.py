@@ -573,6 +573,33 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"error": "bad json"}, 400)
         path = urlparse(self.path).path
 
+        # ---- 非恒定流（扩散波）实验：独立模块，与恒定流完全隔离 ----
+        if path == "/api/unsteady/run":
+            try:
+                from unsteady import solver as us
+
+                def num(k, d):
+                    try:
+                        v = body.get(k, d)
+                        return d if v in (None, "", "auto") else float(v)
+                    except (TypeError, ValueError):
+                        return d
+
+                h_dn = body.get("h_dn")
+                res = us.run(
+                    L=num("L", 10000.0), b=num("b", 5.0), m=num("m", 0.0),
+                    n=num("n", 0.015), i0=num("i0", 0.001),
+                    Q0=num("Q0", 10.0), Qpeak=num("Qpeak", 30.0),
+                    t_peak=num("t_peak", 3600.0), t_base=num("t_base", 7200.0),
+                    t_end=num("t_end", 43200.0) or None,
+                    h_dn=(None if h_dn in (None, "", "auto") else float(h_dn)),
+                    Nx=int(num("Nx", 121)),
+                )
+                return self._json({"ok": True, "result": res})
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
         # ---- 清空会话 ----
         if path == "/api/reset":
             with LOCK:
