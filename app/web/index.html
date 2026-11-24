@@ -280,9 +280,19 @@
     .layout{grid-template-columns:1fr;}
     .row2{grid-template-columns:1fr;}
   }
+  /* 计算中：右下角胶囊，不遮挡页面、不拦截鼠标 */
+  .busyPill{position:fixed;right:16px;bottom:16px;z-index:90;display:none;align-items:center;gap:9px;
+            background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;
+            box-shadow:0 6px 20px rgba(20,40,60,.14);font-size:12.5px;color:#41556b;
+            pointer-events:none;}
+  .busyPill .sp{width:15px;height:15px;border-radius:50%;border:2.5px solid #dbe6f0;
+                border-top-color:#2e6da4;animation:bsp .8s linear infinite;}
+  @keyframes bsp{to{transform:rotate(360deg);}}
+  .busyPill b{color:#2e6da4;}
 </style>
 </head>
 <body>
+<div class="busyPill" id="busyPill"><span class="sp"></span><span id="busyPillText">计算中…</span></div>
 
 <header class="topbar">
   <div class="brand">
@@ -1257,10 +1267,34 @@ function renderLegal(L){
 }
 
 /* ---------------- 计算 ---------------- */
+let _busyTimer = null, _busyT0 = 0;
+function showBusyPill(label){
+  const box = $("#busyPill");
+  if(!box) return;
+  _busyT0 = performance.now();
+  box.style.display = "flex";
+  const upd = () => {
+    $("#busyPillText").innerHTML = label + " <b>" +
+      ((performance.now() - _busyT0) / 1000).toFixed(1) + " s</b>";
+  };
+  upd();
+  clearInterval(_busyTimer);
+  _busyTimer = setInterval(upd, 150);
+}
+function hideBusyPill(){
+  const box = $("#busyPill");
+  if(box) box.style.display = "none";
+  clearInterval(_busyTimer);
+}
+function nextPaint(){
+  return new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+}
+
 async function calc(){
   state.classKey = null;
   const btn = $("#calcBtn"); btn.disabled = true;
   $("#formHint").textContent = "计算中…"; $("#formHint").className = "hint";
+  showBusyPill("正在计算…");
   try{
     const j = await (await fetch("/api/solve",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -1280,10 +1314,14 @@ async function calc(){
     }
     syncForm(state.slots);
     $("#formHint").textContent = "参数已同步。"; $("#formHint").className = "hint";
-    drawProfile(); drawSection(); renderResult(); loadHistory(); updateCtxChip(); renderChips();
+    // 先让浏览器把上面的状态画出来，再做重绘，避免大算例时界面顿住
+    await nextPaint();
+    drawProfile(); drawSection(); renderResult();
+    await nextPaint();
+    loadHistory(); updateCtxChip(); renderChips();
   }catch(e){
     $("#formHint").textContent = "计算失败："+e.message; $("#formHint").className="hint err";
-  }finally{ btn.disabled = false; }
+  }finally{ hideBusyPill(); btn.disabled = false; }
 }
 
 /* ---------------- 历史 ---------------- */

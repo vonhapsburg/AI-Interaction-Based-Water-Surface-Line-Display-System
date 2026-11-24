@@ -939,16 +939,20 @@ class Handler(SimpleHTTPRequestHandler):
                         "warnings": [], "ready": False,
                     })
 
+                # 锁内只做快照；模型调用可能耗时数秒，必须放到锁外，
+                # 否则会把 /api/solve 等请求一起卡住（表现为“整页卡死”）。
                 with LOCK:
-                    # 提问走"沙盒"：在会话槽位的副本上推演，绝不改动真实参数
-                    work = copy.deepcopy(STATE["slots"]) if is_q else STATE["slots"]
-                    r = turn(text, work, use_llm=not is_q, restructure=not is_q)
+                    base_slots = (copy.deepcopy(STATE["slots"]) if is_q
+                                  else dict(STATE["slots"]))
+                r = turn(text, base_slots, use_llm=not is_q, restructure=not is_q)
+                with LOCK:
                     if is_q:
                         slots = dict(STATE["slots"])
                         if r["added"]:
-                            hyp_slots = work
+                            hyp_slots = base_slots
                     else:
                         if r["added"]:
+                            STATE["slots"] = dict(base_slots)
                             STATE["texts"].append(r["normalized"])
                             STATE["raws"].append(text)
                         slots = dict(STATE["slots"])
@@ -1041,20 +1045,22 @@ class Handler(SimpleHTTPRequestHandler):
                 STATE["texts"] = [run["text"] or ""]
                 STATE["raws"] = [run.get("raw") or run["text"] or ""]
                 ctx = _ctx()
-                a, legal, rows = _evaluate(ctx, STATE["slots"], _raw())
-                if a["params"] is None or legal["verdict"] == "reject":
-                    return self._json({"ok": False, "legal": legal,
-                                       "missing": a["missing"], "rows": rows,
-                                       "slots": STATE["slots"]})
-                try:
-                    res = gvf_core.solve(a["params"])
-                except ValueError as e:
-                    return self._json({"ok": False,
-                                       "legal": {"code": "G", "verdict": "reject",
-                                                 "label": legality.CLASS_LABEL["G"],
-                                                 "reasons": ["参数不合法：%s" % e],
-                                                 "hints": []}}, 400)
-                CACHE["params"], CACHE["result"] = a["params"], res
+                snap_slots = dict(STATE["slots"])
+                snap_raw = _raw()
+            a, legal, rows = _evaluate(ctx, snap_slots, snap_raw)
+            if a["params"] is None or legal["verdict"] == "reject":
+                return self._json({"ok": False, "legal": legal,
+                                   "missing": a["missing"], "rows": rows,
+                                   "slots": snap_slots})
+            try:
+                res = gvf_core.solve(a["params"])
+            except ValueError as e:
+                return self._json({"ok": False,
+                                   "legal": {"code": "G", "verdict": "reject",
+                                             "label": legality.CLASS_LABEL["G"],
+                                             "reasons": ["参数不合法：%s" % e],
+                                             "hints": []}}, 400)
+            CACHE["params"], CACHE["result"] = a["params"], res
             return self._json({"ok": True, "replayed": rid, "slots": STATE["slots"],
                                "map": rows, "warnings": a["warnings"],
                                "legal": legal, "result": pack(res)})
