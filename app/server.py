@@ -628,6 +628,31 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
+        # ---- 非恒定流对话：自然语言改工况 / 解释 / 出题 ----
+        if path == "/api/unsteady/chat":
+            text = (body.get("text") or "").strip()
+            if not text:
+                return self._json({"error": "text 为空"}, 400)
+            try:
+                from unsteady import chat as uchat
+                params = body.get("params") or {}
+                summary = body.get("summary") or ""
+                ex = uchat.extract(text, params)
+                if ex.get("act") == "set":
+                    return self._json({"act": "set", "params": ex.get("params") or {},
+                                       "reply": ex.get("reply") or "已更新工况"})
+                if ex.get("act") == "quiz":
+                    q = uchat.quiz(params, summary)
+                    return self._json({"act": "quiz", "items": q.get("items") or [],
+                                       "error": q.get("error")})
+                if ex.get("act") == "error":
+                    return self._json({"act": "answer", "reply": ex.get("reply")})
+                ans = uchat.answer(text, params, summary)
+                return self._json({"act": "answer", "reply": ans.get("reply", "")})
+            except Exception as e:
+                return self._json({"act": "answer",
+                                   "reply": "对话通道出错：%s: %s" % (type(e).__name__, e)})
+
         # ---- 非恒定流稳态回归：与恒定流内核逐点对比（外部锚点） ----
         if path == "/api/unsteady/verify":
             try:

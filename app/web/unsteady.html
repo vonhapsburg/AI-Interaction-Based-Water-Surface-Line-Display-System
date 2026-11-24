@@ -49,6 +49,14 @@
   th:first-child,td:first-child{text-align:left;}
   thead th{color:var(--muted);font-weight:500;}
   .note{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.6;}
+  .chat-body{height:210px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:#fcfdfe;}
+  .msg{max-width:92%;font-size:12.8px;line-height:1.6;padding:7px 10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;}
+  .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
+  .msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px;}
+  .chat-input{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line2);}
+  .chat-input input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12.5px;font-family:inherit;}
+  .chat-input input:focus{outline:none;border-color:var(--accent2);}
+  .chat-input button{width:auto;margin:0;padding:6px 12px;}
 </style>
 </head>
 <body>
@@ -59,16 +67,25 @@
 </header>
 
 <div class="wrap">
-  <aside>
+    <aside>
+    <section class="card">
+      <div class="card-h">对话交互 <span class="tag">自然语言 → 工况 → 计算</span></div>
+      <div class="chat-body" id="chatBody"></div>
+      <div class="chat-input">
+        <input id="chatInput" placeholder="例如：渠长5公里，底宽5米，流量从10涨到30，1小时涨完，2小时回落，模拟6小时">
+        <button class="primary" id="chatSend">发送</button>
+      </div>
+    </section>
+
     <section class="card">
       <div class="card-h">工况 <span class="tag">矩形/梯形</span></div>
       <div class="card-b">
-        <div class="seg" id="solverSeg" style="margin-bottom:8px;width:100%;">
-          <button data-m="diffusion" class="on" style="flex:1;">扩散波 A（快）</button>
-          <button data-m="preissmann" style="flex:1;">全方程 B1（回水）</button>
+        <div class="seg" id="modeSeg" style="margin-bottom:8px;width:100%;">
+          <button data-mode="teaching" class="on" style="flex:1;">教学模式 · 扩散波</button>
+          <button data-mode="engineering" style="flex:1;">工程模式 · 全方程</button>
         </div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
-          <b>扩散波</b>：忽略惯性项，约 1 秒出结果；不能算回水顶托与急流下游扰动。
+          <b>教学模式</b>：扩散波（忽略惯性项），算得快，用来讲清“一族曲线 / 削峰 / 绳套”。
         </div>
         <div class="grid2">
           <div class="field"><label>渠长 L (m)</label><input id="L" type="number" value="10000"></div>
@@ -170,23 +187,25 @@
 const $ = s => document.querySelector(s);
 const COL = ["#2e6da4","#c9741f","#2f7d54","#7a3b0e","#7d4b9a","#4b7d9a"];
 let last = null;
-let solver = "diffusion";
+let mode = "teaching";           // teaching → 扩散波；engineering → 全方程
 
-function bindSolverSeg(){
-  document.querySelectorAll("#solverSeg button").forEach(btn=>{
+function currentModel(){ return mode === "engineering" ? "preissmann" : "diffusion"; }
+
+function bindModeSeg(){
+  document.querySelectorAll("#modeSeg button").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      solver = btn.dataset.m;
-      document.querySelectorAll("#solverSeg button").forEach(b=>b.classList.toggle("on", b.dataset.m===solver));
+      mode = btn.dataset.mode;
+      document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
       const note = $("#modelNote");
       const sub = $("#modelSub");
-      if(sub) sub.textContent = (solver === "preissmann")
-        ? "圣维南全方程 · Preissmann 隐式 · 保留惯性项"
-        : "扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项";
-      if(solver === "preissmann"){
-        note.innerHTML = "<b>全方程（Preissmann 隐式）</b>：保留惯性项、无条件稳定；" +
-          "能算回水顶托与下游扰动上溯，但不支持溃坝/涌潮。约 1 秒出结果。";
+      if(mode === "engineering"){
+        if(note) note.innerHTML = "<b>工程模式</b>：圣维南全方程（Preissmann 隐式，保留惯性项），" +
+          "能算回水顶托与下游扰动上溯；不支持溃坝/涌潮。";
+        if(sub) sub.textContent = "圣维南全方程 · Preissmann 隐式 · 保留惯性项";
       }else{
-        note.innerHTML = "<b>扩散波</b>：忽略惯性项，约 1 秒出结果；不能算回水顶托与急流下游扰动。";
+        if(note) note.innerHTML = "<b>教学模式</b>：扩散波（忽略惯性项），算得快，" +
+          "用来讲清“一族曲线 / 削峰 / 绳套”。";
+        if(sub) sub.textContent = "扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项";
       }
     });
   });
@@ -197,7 +216,7 @@ function setMsg(text, cls){ const m = $("#msg"); m.textContent = text; m.classNa
 async function runCase(){
   const btn = $("#run"); btn.disabled = true; setMsg("计算中…");
   const payload = {
-    model: solver,
+    model: currentModel(),
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
@@ -460,7 +479,104 @@ function drawDiag(R){
   }
 }
 
-bindSolverSeg();
+
+/* ---------------- 对话交互 ---------------- */
+function bubble(text, who){
+  const body = $("#chatBody");
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  div.textContent = text;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+  return div;
+}
+
+function collectParams(){
+  return {
+    L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+    i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
+    t_peak_h: +$("#tp").value, t_base_h: +$("#tb").value, t_end_h: +$("#te").value,
+    h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
+    Nx: +$("#Nx").value, mode: mode
+  };
+}
+
+function summaryText(){
+  if(!last) return "";
+  const d = last.diagnostics, m = last.meta;
+  const peaks = last.stations.map(st => Math.round(st.x) + "m:" + st.peak_Q.toFixed(1)).join(" → ");
+  return "求解器=" + (last.model || m.model || "diffusion") +
+    "；正常水深 " + m.h_n + " m；断面峰值 " + peaks +
+    "；实测等效波速 " + d.c_k_measured + " m/s" +
+    "；质量误差 " + (d.mass_err*100).toFixed(3) + "%" +
+    (d.c_k_peak != null ? "；c_k(峰值水深)=" + d.c_k_peak : "") +
+    (last.stations.length >= 2 ? "；首末断面峰现时间 " +
+      (last.stations[0].peak_t/3600).toFixed(2) + "h → " +
+      (last.stations[last.stations.length-1].peak_t/3600).toFixed(2) + "h" : "");
+}
+
+function applyParams(p){
+  const map = {L:"#L", b:"#b", m:"#m", n:"#n", i0:"#i0", Q0:"#Q0", Qpeak:"#Qpeak",
+               t_peak_h:"#tp", t_base_h:"#tb", t_end_h:"#te", Nx:"#Nx"};
+  let changed = 0;
+  for(const k in map){
+    if(p[k] != null && !isNaN(+p[k])){
+      $(map[k]).value = (+p[k]);
+      changed++;
+    }
+  }
+  if(p.h_dn != null && +p.h_dn > 0){
+    $("#hdn").value = (+p.h_dn);
+    changed++;
+  }
+  return changed;
+}
+
+async function sendChat(){
+  const inp = $("#chatInput");
+  const text = inp.value.trim();
+  if(!text) return;
+  inp.value = "";
+  bubble(text, "me");
+  const btn = $("#chatSend");
+  btn.disabled = true;
+  const wait = bubble("思考中…", "ai");
+  try{
+    const r = await (await fetch("/api/unsteady/chat", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text: text, params: collectParams(), summary: summaryText()})
+    })).json();
+    if(r.act === "set"){
+      const n = applyParams(r.params || {});
+      wait.textContent = (r.reply || "已更新工况") +
+        (n ? "\n已同步 " + n + " 个参数，正在计算…" : "\n没有识别到可更新的参数。");
+      if(n) runCase();
+    }else if(r.act === "quiz"){
+      const items = r.items || [];
+      wait.textContent = items.length
+        ? items.map((it,i)=> "第"+(i+1)+"题：" + it.q + "\n\n答案：" + it.a + "\n解析：" + it.why).join("\n\n———\n\n")
+        : ("出题失败：" + (r.error || "模型未返回题目"));
+    }else{
+      wait.textContent = r.reply || "（没有回答）";
+    }
+  }catch(e){
+    wait.textContent = "请求失败：" + e.message;
+  }finally{
+    btn.disabled = false;
+    inp.focus();
+  }
+}
+
+function bindChat(){
+  $("#chatSend").addEventListener("click", sendChat);
+  $("#chatInput").addEventListener("keydown", e=>{ if(e.key === "Enter"){ e.preventDefault(); sendChat(); } });
+  bubble("你好，我是非恒定流助手。可以直接说工况，例如：\n" +
+         "「渠长5公里，底宽5米，糙率0.015，底坡0.001，流量从10涨到30，1小时涨完，2小时回落，模拟6小时」\n" +
+         "也可以问「为什么洪峰变矮了」「绳套为什么是逆时针」，或者说「出几道题」。", "ai");
+}
+
+bindModeSeg();
+bindChat();
 $("#run").addEventListener("click", runCase);
 
 /* 稳态回归：与恒定流内核逐点对比（外部锚点，不是自证） */
