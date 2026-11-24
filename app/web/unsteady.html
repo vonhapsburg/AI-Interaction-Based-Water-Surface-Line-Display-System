@@ -977,7 +977,8 @@ async function randomCase(){
   try{
     const r = await postJSON("/api/unsteady/random", {});
     if(!r.ok){ setMsg("随机算例失败：" + (r.error || ""), "err"); return; }
-    const p = r.params;
+    const p = r.params || r;
+    if(!p || !p.mode){ setMsg("随机算例返回结构异常：" + JSON.stringify(r).slice(0, 120), "err"); return; }
     mode = p.mode;
     document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
     updateModeVisuals();

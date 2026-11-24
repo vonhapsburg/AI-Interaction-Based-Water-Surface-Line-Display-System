@@ -137,6 +137,47 @@ def main():
     check("对话出题 3 道", c3.get("act") == "quiz" and len(c3.get("items") or []) == 3,
           len(c3.get("items") or []))
 
+    # ---------- 前后端字段契约 ----------
+    lines.append("")
+    lines.append("=== 字段契约（页面读什么，接口给什么）===")
+    code, rj = post("/api/unsteady/random", {})
+    check("random 有 params 对象", isinstance(rj.get("params"), dict), type(rj.get("params")).__name__)
+    if isinstance(rj.get("params"), dict):
+        need = ("mode", "L", "b", "m", "n", "i0", "Q0", "Qpeak", "tp", "tb", "te", "Nx", "hdn")
+        miss = [k for k in need if k not in rj["params"]]
+        check("random.params 字段齐全", not miss, miss)
+        check("random.params.mode 合法", rj["params"]["mode"] in ("teaching", "engineering"),
+              rj["params"]["mode"])
+        # 模拟页面：const p = r.params || r; p.mode
+        p = rj.get("params") or rj
+        check("页面取法可用（p.mode）", bool(p.get("mode")), p.get("mode"))
+
+    code, rr = post("/api/unsteady/run", dict(common, model="diffusion"))
+    check("run 返回 result", isinstance(rr.get("result"), dict))
+    if isinstance(rr.get("result"), dict):
+        res = rr["result"]
+        need = ("x", "t", "h_snap", "t_snap_hours", "stations", "diagnostics", "meta", "model")
+        miss = [k for k in need if k not in res]
+        check("result 字段齐全", not miss, miss)
+        check("result.meta 含 h_n/b/m",
+              all(k in (res.get("meta") or {}) for k in ("h_n", "b", "m")),
+              list((res.get("meta") or {}))[:6])
+
+    code, bw = post("/api/unsteady/backwater", {"L": 500, "b": 5, "m": 0, "n": 0.015,
+                                                 "i0": 0.001, "Q": 10, "h_dn": 1.68})
+    need = ("ok", "h_n", "h_dn", "h_up", "rise_up", "backwater_len", "curve_types", "x", "h", "hn")
+    check("backwater 字段齐全", all(k in bw for k in need), [k for k in need if k not in bw])
+
+    code, q = post("/api/unsteady/chat", {"text": "出几道题", "params": {"L": 5000},
+                                          "summary": "峰值 30 → 27"})
+    check("chat.quiz 有 items 且 3 条", q.get("act") == "quiz" and len(q.get("items") or []) == 3,
+          len(q.get("items") or []))
+
+    code, vf = post("/api/unsteady/verify", {"L": 1000, "b": 5, "m": 0, "n": 0.015,
+                                              "i0": 0.001, "Q": 10, "h_dn": 1.4})
+    need = ("ok", "mean", "max", "x_max", "x", "unsteady", "steady", "h_dn")
+    check("verify 字段齐全", all(k in vf for k in need), [k for k in need if k not in vf])
+
     # ---------- Origin 防护 ----------
     code, _ = post("/api/unsteady/random", {}, origin="http://evil.example.com")
     check("拒绝外站 Origin", code == 403, code)

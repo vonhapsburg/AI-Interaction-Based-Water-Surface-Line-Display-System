@@ -759,8 +759,13 @@ class Handler(SimpleHTTPRequestHandler):
                     break
                 if picked is None:
                     return self._json({"ok": False, "error": "随机生成失败，请重试"})
-                picked["ok"] = True
-                return self._json(picked)
+                params = {k: picked[k] for k in
+                          ("mode", "L", "b", "m", "n", "i0", "Q0", "Qpeak",
+                           "tp", "tb", "te", "Nx", "hdn")}
+                # 同时给嵌套与平铺，兼容新旧前端
+                out = {"ok": True, "params": params, "h_n": picked.get("h_n")}
+                out.update(params)
+                return self._json(out)
             except Exception as e:
                 return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
