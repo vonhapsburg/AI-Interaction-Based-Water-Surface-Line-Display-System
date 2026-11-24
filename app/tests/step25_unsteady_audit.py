@@ -50,7 +50,7 @@ def get(path):
 def main():
     # ---------- 静态：id 引用一致性 ----------
     html = open(HTML, encoding="utf-8").read()
-    js = re.search(r"<script>(.*?)</script>", html, re.S).group(1)
+    js = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
     ids = set(re.findall(r'id="([A-Za-z0-9_\-]+)"', html))
     refs = set(re.findall(r'\$\("#([A-Za-z0-9_\-]+)"\)', js))
     refs |= set(re.findall(r'getElementById\("([A-Za-z0-9_\-]+)"\)', js))
