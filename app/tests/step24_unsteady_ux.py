@@ -58,6 +58,8 @@ def main():
         check("输入框可拉伸（textarea）", '<textarea id="chatInput"' in html and "resize:vertical" in html)
         check("模式两色", 'data-mode="teaching"].on' in html and 'data-mode="engineering"].on' in html)
         check("猜你想问含机理题", "为什么洪峰变矮了" in html and "出几道题" in html)
+        check("① 图悬停只显示当前帧", "该断面 z 范围" in html and "familySel" in html)
+        check("① 图不再逐帧罗列", 'snaps.map((hs,k)=> "t="' not in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)

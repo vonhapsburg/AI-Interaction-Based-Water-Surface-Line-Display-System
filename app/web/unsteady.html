@@ -365,7 +365,8 @@ async function postJSON(url, payload){
 }
 const COL = ["#2e6da4","#c9741f","#2f7d54","#7a3b0e","#7d4b9a","#4b7d9a"];
 let last = null;
-let mode = "teaching";           // teaching → 扩散波；engineering → 全方程
+let mode = "teaching";
+let familySel = 0;   // 当前时间滑块指向的帧           // teaching → 扩散波；engineering → 全方程
 
 function currentModel(){ return mode === "engineering" ? "preissmann" : "diffusion"; }
 
@@ -434,12 +435,14 @@ function setup(cv, h){
 }
 
 function drawAll(R){
-  drawFamily(R, null); drawHydro(R); drawLoop(R); drawDiag(R);
+  drawFamily(R, Math.max((R.h_snap || []).length - 1, 0)); drawHydro(R); drawLoop(R); drawDiag(R);
   initTimeSlider(R);
 }
 
 /* ① 一族曲线：高程 z = z_b + h，渠底 z_b = -i0 x */
 function drawFamily(R, sel){
+  const selK = (sel == null) ? Math.max((R.h_snap || []).length - 1, 0) : sel;
+  familySel = selK;
   const {ctx, w, h} = setup($("#cFamily"), 300);
   const pad = {l:56,r:16,t:18,b:34};
   const x = R.x, snaps = R.h_snap, hours = R.t_snap_hours;
@@ -496,12 +499,18 @@ function drawFamily(R, sel){
   ctx.fillText("里程 s (m)", (pad.l+w-pad.r)/2, h-8);
   ctx.save(); ctx.translate(14, (pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText("高程 z (m)", 0, 0); ctx.restore();
+  const curK = Math.min(Math.max(familySel, 0), snaps.length - 1);
   registerHover("cFamily", {pad, w, h, x0:x[0], x1:x[x.length-1],
     y0: ymin - span*0.05, y1: ymin - span*0.05 + span*1.15, xs:x,
-    series: snaps.map((hs,k)=>({name:"t="+hours[k]+"h", color:"#2e6da4",
-      ys: hs.map((v,i)=>bed[i]+v)})),
-    fmt: i => "s = " + x[i].toFixed(1) + " m\n" +
-      snaps.map((hs,k)=> "t=" + hours[k] + "h : z = " + (bed[i]+hs[i]).toFixed(3) + " m").join("\n")});
+    series: [{name:"当前时刻", color:"#b23c4a",
+              ys: snaps[curK].map((v,i)=>bed[i]+v)}],
+    fmt: i => {
+      const zs = snaps.map(hs => bed[i] + hs[i]);
+      let lo = Math.min.apply(null, zs), hi = Math.max.apply(null, zs);
+      return "s = " + x[i].toFixed(1) + " m\n" +
+             "当前 t=" + hours[curK] + "h : z = " + zs[curK].toFixed(3) + " m\n" +
+             "该断面 z 范围 " + lo.toFixed(3) + " ~ " + hi.toFixed(3) + " m";
+    }});
 }
 
 /* ② 断面流量过程线 */
@@ -1043,6 +1052,7 @@ function initTimeSlider(R){
   sl.oninput = () => {
     const k = +sl.value;
     lb.textContent = "t = " + (R.t_snap_hours[k] != null ? R.t_snap_hours[k] : 0) + " h";
+    familySel = k;
     drawFamily(R, k);
   };
 }
