@@ -67,11 +67,19 @@ def main():
     check("Fr < 1", 0 < sub.get("Fr", 9) < 1, sub.get("Fr"))
     check("c−v > 0", sub.get("c_minus_v", -1) > 0, sub.get("c_minus_v"))
     check("检测到上游响应", sub.get("verdict") == "rises", sub.get("verdict"))
-    if sub.get("measured_up"):
-        check("实测与理论偏差 < 15%", abs(sub["err"]) < 0.15,
-              "%.1f%%" % (sub["err"] * 100))
-        lines.append("  理论 %.0f s，实测 %.0f s，偏差 %.1f%%"
-                     % (sub["theory_up"], sub["measured_up"], sub["err"] * 100))
+    if sub.get("speed_meas") is not None:
+        check("传播速度与 c−v 偏差 < 25%", abs(sub["err_speed"]) < 0.25,
+              "%.1f%%" % (sub["err_speed"] * 100))
+        lines.append("  实测 %.2f m/s，理论 %.2f m/s，偏差 %.1f%%"
+                     % (sub["speed_meas"], sub["speed_theory"], sub["err_speed"] * 100))
+    # Fr 必须随工况变化，而不是写死的预设值
+    other = post("/api/unsteady/characteristic",
+                 {"L": 2000, "b": 6, "m": 1.0, "n": 0.025, "i0": 0.0008, "Q0": 12})
+    check("Fr 随工况变化（非预设）", abs(other.get("Fr", 0) - sub.get("Fr", 0)) > 0.05,
+          "%.3f vs %.3f" % (other.get("Fr", 0), sub.get("Fr", 0)))
+    check("工况参数被真实采用", abs(other.get("b", 0) - 6.0) < 1e-9
+          and abs(other.get("Q0", 0) - 12.0) < 1e-9,
+          (other.get("b"), other.get("Q0")))
 
     lines.append("")
     lines.append("=== 特征线：急流 ===")

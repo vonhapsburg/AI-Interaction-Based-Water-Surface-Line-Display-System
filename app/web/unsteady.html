@@ -310,8 +310,9 @@ window.addEventListener("unhandledrejection", function(e){
       <div class="card-h">④ 特征线：扰动能不能往上游跑 <span class="tag">v ± c</span></div>
       <div class="card-b">
         <div class="charRow">
-          <button type="button" data-k="sub">缓坡算例（Fr&lt;1）</button>
-          <button type="button" data-k="sup">陡坡算例（Fr&gt;1）</button>
+          <button type="button" data-k="cur">用当前工况</button>
+          <button type="button" data-k="sub">缓坡预设</button>
+          <button type="button" data-k="sup">陡坡预设</button>
         </div>
         <canvas id="cChar" height="240"></canvas>
         <div id="charVerdict" style="margin-top:8px;">点上面的按钮做一次实验：在渠道下游加一个小水位扰动，看它能不能传到上游。</div>
@@ -1057,21 +1058,30 @@ async function runChar(kind){
   const box = $("#charVerdict");
   box.textContent = "实验进行中…";
   try{
-    const p = CHAR_CASES[kind];
+    const p = (kind === "cur")
+      ? {L:+$("#L").value, b:+$("#b").value, m:+$("#m").value, n:+$("#n").value,
+         i0:+$("#i0").value, Q0:+$("#Q0").value, amp:0.2}
+      : CHAR_CASES[kind];
     const r = await postJSON("/api/unsteady/characteristic", p);
     if(!r.ok){ box.textContent = "实验失败：" + (r.error || "未知"); return; }
     drawCharChart(r);
     const bits = [];
-    bits.push("<b>Fr = " + r.Fr + "</b>（" + (r.regime === "subcritical" ? "缓流" : "急流") + "），" +
-              "v = " + r.v + " m/s，c = " + r.c + " m/s，v−c = " + r.c_minus_v + " m/s。");
+    const regimeCn = r.regime === "subcritical" ? "缓流" : (r.regime === "supercritical" ? "急流" : "跨越临界");
+    bits.push("工况：L=" + r.L + " m，b=" + r.b + " m，i₀=" + r.i0 + "，Q₀=" + r.Q0 +
+              " m³/s；正常水深 h₀=" + r.h_n + " m。");
+    bits.push("沿程 Fr 在 <b>" + r.Fr_min + " ~ " + r.Fr_max + "</b> 之间（" + regimeCn +
+              "），c−v 平均 " + r.c_minus_v + " m/s、最小 " + r.c_minus_v_min + " m/s。");
     if(r.regime === "subcritical"){
-      bits.push("下游扰动理论上溯用时 " + r.theory_up + " s；实测上游开始响应 " +
-                (r.measured_up == null ? "未检测到（扰动衰减）" : r.measured_up + " s") +
-                (r.err == null ? "。" : "，与理论偏差 " + (r.err*100).toFixed(1) + "%。"));
-      bits.push("结论：<b>缓流时下游扰动可以逆流上溯</b>，这就是回水顶托的力学来源。");
+      bits.push("理论行程 ∫dx/(c−v) = " + r.theory_up + " s；用" + r.responded +
+                " 个断面的波前到达时间拟合：实测传播速度 " +
+                (r.speed_meas == null ? "—" : r.speed_meas.toFixed(2)) +
+                " m/s，理论 c−v = " + r.speed_theory.toFixed(2) + " m/s" +
+                (r.err_speed == null ? "。" :
+                 "，偏差 " + (r.err_speed*100).toFixed(1) + "%（方法本身有 10% 量级误差）。"));
+      bits.push("结论：<b>缓流时下游扰动可逆流上溯</b>——这就是回水顶托的力学来源。");
     }else{
-      bits.push("v−c = " + r.c_minus_v + " m/s &lt; 0：特征线 v−c 也指向下游，<b>下游扰动无法上溯</b>。");
-      bits.push("这说明急流河段里，下游水位变化传不到上游——扩散波做不到这点，全方程可以。");
+      bits.push("v−c 最小 " + r.c_minus_v_min + " m/s：特征线也指向下游，<b>下游扰动无法上溯</b>。");
+      bits.push("说明急流河段里下游水位变化传不到上游；扩散波做不到这点，全方程可以。");
     }
     box.innerHTML = bits.join("<br>");
   }catch(e){

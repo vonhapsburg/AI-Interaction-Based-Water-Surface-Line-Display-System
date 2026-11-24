@@ -652,7 +652,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
-        # ---- 特征线实验：下游加小扰动，看它能不能往上游跑 ----
+        # ---- 特征线实验：按"真实工况"算 Fr 与 c−v，再做下游扰动试验 ----
         if path == "/api/unsteady/characteristic":
             try:
                 import math as _math
@@ -669,63 +669,142 @@ class Handler(SimpleHTTPRequestHandler):
                 L = num("L", 1000.0); b = num("b", 5.0); m = num("m", 0.0)
                 n = num("n", 0.015); i0 = num("i0", 0.001); Q0 = num("Q0", 10.0)
                 amp = num("amp", 0.2)
+                Nx = int(num("Nx", 41))
+                Nx = max(21, min(Nx, 121))
 
                 hn = us.normal_depth(b, m, n, i0, Q0)
-                A0 = hn * (b + m * hn)
-                B0 = b + 2.0 * m * hn
-                v0 = Q0 / A0
-                c0 = _math.sqrt(9.81 * A0 / B0)
-                Fr0 = v0 / c0
-                c_minus = c0 - v0
-                c_plus = c0 + v0
+                x = np.linspace(0.0, L, Nx)
 
-                out = {"ok": True, "h_n": round(float(hn), 4), "v": round(v0, 4),
-                       "c": round(c0, 4), "Fr": round(Fr0, 4),
-                       "c_minus_v": round(c_minus, 4), "c_plus_v": round(c_plus, 4),
-                       "L": L, "amp": amp,
-                       "regime": "supercritical" if Fr0 >= 1.0 else "subcritical"}
+                # 初场：优先用恒定水面线（含回水），失败则退回均匀流
+                h_prof = np.full(Nx, hn)
+                steady_types = []
+                try:
+                    slots = {"Q": Q0, "mode": "teaching",
+                             "reaches": [{"L": L, "i": i0, "b": b, "m": m, "n": n}],
+                             "downstream": "given_h", "h0": hn, "upstream": "none"}
+                    a0 = adapter.build({"slots": slots, "warnings": [], "normalized": ""})
+                    st = gvf_core.solve(a0["params"])
+                    if st.segments:
+                        sx = np.concatenate([np.asarray(g.x, float) for g in st.segments])
+                        sh = np.concatenate([np.asarray(g.h, float) for g in st.segments])
+                        order = np.argsort(sx)
+                        h_prof = np.interp(x, sx[order], sh[order])
+                        steady_types = [g.curve_type for g in st.segments]
+                except Exception:
+                    h_prof = np.full(Nx, hn)
 
-                if Fr0 >= 1.0:
-                    # 急流：理论上下游扰动不能上溯，这里不给数值实验（边界提法不同）
+                # 逐断面水力学量
+                A = h_prof * (b + m * h_prof)
+                B = b + 2.0 * m * h_prof
+                v = Q0 / np.maximum(A, 1e-9)
+                c = np.sqrt(9.81 * A / np.maximum(B, 1e-9))
+                Fr = v / c
+                cmv = c - v
+
+                Fr_min, Fr_max = float(Fr.min()), float(Fr.max())
+                if Fr_max < 1.0:
+                    regime = "subcritical"
+                elif Fr_min > 1.0:
+                    regime = "supercritical"
+                else:
+                    regime = "mixed"
+
+                # 理论行程：∫ dx / (c−v)，只在全程缓流时有意义
+                theory_up = None
+                if regime == "subcritical":
+                    inv = 1.0 / np.maximum(cmv, 1e-9)
+                    theory_up = float(np.trapz(inv, x))
+
+                out = {"ok": True,
+                       "L": L, "b": b, "m": m, "n": n, "i0": i0, "Q0": Q0, "amp": amp,
+                       "h_n": round(float(hn), 4),
+                       "h_up": round(float(h_prof[0]), 4),
+                       "h_dn": round(float(h_prof[-1]), 4),
+                       "steady_types": steady_types,
+                       "Fr": round(float(Fr.mean()), 4),
+                       "Fr_min": round(Fr_min, 4), "Fr_max": round(Fr_max, 4),
+                       "v": round(float(v.mean()), 4),
+                       "c": round(float(c.mean()), 4),
+                       "c_minus_v": round(float(cmv.mean()), 4),
+                       "c_minus_v_min": round(float(cmv.min()), 4),
+                       "regime": regime,
+                       "profile": [round(float(z), 4) for z in h_prof[::max(1, Nx // 20)]],
+                       "profile_x": [round(float(z), 1) for z in x[::max(1, Nx // 20)]]}
+
+                if regime != "subcritical":
                     out["theory_up"] = None
                     out["measured_up"] = None
                     out["points"] = []
-                    out["note"] = ("急流（Fr=%.2f>1）：特征线 v−c<0 仍指向下游，"
-                                   "下游扰动无法上溯；数值演示需急流专用边界，见能力边界。"
-                                   % Fr0)
                     out["verdict"] = "blocked"
+                    out["note"] = (
+                        "该工况 Fr 在 %.2f~%.2f 之间（%s）：v−c 最小 %.2f m/s，"
+                        "下游扰动无法上溯。强急流/混合流的数值演示需要急流专用边界，"
+                        "本工具只做定性判定。" % (
+                            Fr_min, Fr_max,
+                            "全程急流" if regime == "supercritical" else "跨越临界",
+                            float(cmv.min())))
                     return self._json(out)
 
-                t_theory = L / max(c_minus, 1e-6)
-                t_end = min(max(2.2 * t_theory, 600.0), 6 * 3600.0)
-                h_dn = hn + amp
-                h_init = np.full(int(num("Nx", 41)), hn)
+                t_end = min(max(2.2 * theory_up, 600.0), 6 * 3600.0)
+                h_dn = float(h_prof[-1] + amp)
                 res = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Q0,
                              t_peak=60.0, t_base=120.0, t_end=t_end,
-                             h_dn=h_dn, h_init=h_init, Nx=int(num("Nx", 41)),
-                             snap_hours=[0.0])
+                             h_dn=h_dn, h_init=h_prof, Nx=Nx, snap_hours=[0.0])
                 T = np.asarray(res["t"], float)
-                sts = res["stations"]
-                thr = 0.02 * abs(amp)
                 pts = []
-                for st in sts:
+                for st in res["stations"]:
                     hh = np.asarray(st["h"], float)
-                    dev = np.abs(hh - hn)
-                    idx = int(np.argmax(dev >= thr)) if np.any(dev >= thr) else -1
-                    arr = float(T[idx]) if idx >= 0 else None
-                    pts.append({"x": st["x"], "arrival": arr})
-                up_pt = [p for p in pts if p["x"] <= 1e-6]
-                measured = up_pt[0]["arrival"] if up_pt else None
-                err = ((measured - t_theory) / t_theory) if measured else None
+                    if hh.size < 3:
+                        pts.append({"x": st["x"], "arrival": None})
+                        continue
+                    # 用"水位变化最快"的时刻代表波前到达（比阈值法稳）
+                    dh = np.abs(np.diff(hh))
+                    idx = int(np.argmax(dh))
+                    pts.append({"x": st["x"],
+                                "arrival": float(T[min(idx, T.size - 1)])})
+                up = [p for p in pts if p["x"] <= 1e-6]
+                measured = up[0]["arrival"] if up else None
+
+                # 用相邻断面的到达时间差拟合传播速度（不要求扰动跑到渠首）
+                resp = sorted([p for p in pts if p["arrival"] is not None],
+                              key=lambda p: p["x"])
+                speed_meas, err_speed = None, None
+                if len(resp) >= 2:
+                    # 边界附近的首个时段会被初始突变污染，用中位数更稳
+                    speeds = []
+                    for a, b in zip(resp[:-1], resp[1:]):
+                        dx = abs(b["x"] - a["x"])
+                        dt = abs(b["arrival"] - a["arrival"])
+                        if dt > 1e-9 and dx > 1e-9 and dt > 0.02 * t_end:
+                            speeds.append(dx / dt)
+                    if speeds:
+                        speeds.sort()
+                        m = len(speeds)
+                        speed_meas = (speeds[m // 2] if m % 2
+                                      else 0.5 * (speeds[m // 2 - 1] + speeds[m // 2]))
+                cmv_mean = float(cmv.mean())
+                if speed_meas is not None:
+                    err_speed = (speed_meas - cmv_mean) / cmv_mean
+
                 out.update({
                     "t_end": round(t_end, 1),
-                    "theory_up": round(t_theory, 1),
+                    "theory_up": round(theory_up, 1),
                     "measured_up": None if measured is None else round(measured, 1),
-                    "err": None if err is None else round(err, 4),
+                    "err": (None if measured is None
+                            else round((measured - theory_up) / theory_up, 4)),
+                    "speed_meas": None if speed_meas is None else round(speed_meas, 4),
+                    "speed_theory": round(cmv_mean, 4),
+                    "err_speed": None if err_speed is None else round(err_speed, 4),
+                    "responded": len(resp),
                     "points": pts,
-                    "verdict": ("rises" if measured is not None else "no_response"),
-                    "note": ("缓流（Fr=%.2f<1）：下游扰动沿 v−c=%.2f m/s 上溯，"
-                             "理论用时 %.0f s。" % (Fr0, c_minus, t_theory)),
+                    "verdict": ("rises" if speed_meas is not None else "no_response"),
+                    "note": ("缓流（Fr %.2f~%.2f）：实测传播速度 %.2f m/s，"
+                             "理论 c−v=%.2f m/s，偏差 %s；理论行程 %.0f s。"
+                             % (Fr_min, Fr_max,
+                                speed_meas if speed_meas else float("nan"),
+                                cmv_mean,
+                                "—" if err_speed is None else "%.1f%%" % (err_speed * 100),
+                                theory_up)),
                 })
                 return self._json(out)
             except Exception as e:
