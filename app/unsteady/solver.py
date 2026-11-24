@@ -233,6 +233,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     bnd_peak_err = abs(st0["peak_Q"] - Qpeak) / max(Qpeak, 1e-9)
 
     return {
+        "model": "diffusion",
         "x": [round(float(v), 2) for v in x],
         "t": T,
         "t_snap_hours": [round(v / 3600.0, 3) for v in t_snap],
