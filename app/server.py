@@ -29,6 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
+BUILD_ID = "2026-11-24-unsteady-ux2"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -463,6 +464,13 @@ def get_run(rid):
 
 
 # ---------------------------------------------------------------- HTTP
+class ExclusiveServer(ThreadingHTTPServer):
+    """Windows 下 SO_REUSEADDR 允许多个进程绑同一端口，导致请求落到旧实例。
+    这里关闭它：端口被占就换下一个端口，绝不抢占。"""
+    allow_reuse_address = False
+    allow_reuse_port = False
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=WEB, **kw)
@@ -496,6 +504,10 @@ class Handler(SimpleHTTPRequestHandler):
                                "core": gvf_core.SCHEMA_VERSION,
                                "history": history_ok(),
                                "session": len(STATE["slots"])})
+
+        if u.path == "/api/version":
+            return self._json({"ok": True, "build": BUILD_ID,
+                               "unsteady": ["run", "verify", "backwater", "chat", "random"]})
 
         if u.path == "/api/presets":
             groups = generator.grouped()
@@ -572,6 +584,11 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             return self._json({"error": "bad json"}, 400)
         path = urlparse(self.path).path
+
+        # ---- 版本与能力：前端据此判断是否连到了旧版本服务 ----
+        if path == "/api/version":
+            return self._json({"ok": True, "build": BUILD_ID,
+                               "unsteady": ["run", "verify", "backwater", "chat", "random"]})
 
         # ---- 非恒定流（扩散波）实验：独立模块，与恒定流完全隔离 ----
         if path == "/api/unsteady/run":
@@ -1115,11 +1132,31 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     # 端口自适应：8000 被占（比如已经开着一个）就往后找，避免双击启动失败
     base = int(os.environ.get("GVF_PORT", "8000"))
+
+    def _existing(port_no):
+        try:
+            import urllib.request as _ur
+            with _ur.urlopen("http://127.0.0.1:%d/api/version" % port_no, timeout=1.5) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except Exception:
+            return None
+
+    alive = _existing(base)
+    if alive:
+        print("已有服务在运行：http://127.0.0.1:%d（%s）" % (base, alive.get("build")))
+        print("直接使用它即可。若要重启，请先关闭旧的命令行窗口，再运行本程序。")
+        try:
+            with open(os.path.join(ROOT, ".port"), "w", encoding="utf-8") as f:
+                f.write(str(base))
+        except OSError:
+            pass
+        raise SystemExit(0)
+
     httpd = None
     port = base
     for cand in range(base, base + 20):
         try:
-            httpd = ThreadingHTTPServer(("127.0.0.1", cand), Handler)
+            httpd = ExclusiveServer(("127.0.0.1", cand), Handler)
             port = cand
             break
         except OSError:
