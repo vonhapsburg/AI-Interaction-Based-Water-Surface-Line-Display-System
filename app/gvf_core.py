@@ -1134,7 +1134,27 @@ def _build_segments(pr: Params, infos: List[ReachInfo],
             Es = np.array([specific_energy(sec, pr.Q, pr.g, pr.alpha, v) for v in hs])
             Fr = np.array([froude(sec, pr.Q, pr.g, pr.alpha, v) for v in hs])
             vv = np.array([pr.Q / props(sec, v).A if props(sec, v).A > 0 else 0.0 for v in hs])
-            zone, ctype, regime = zone_of(float(hs[0]), info.h0, info.hc, info.slope_class)
+            # 型别不能只看段首点：回水剖面从正常水深出发时首点恰好 h≈h₀，
+            # 会被误判成 M2。这里在段内取样投票，多区段记 mixed。
+            sample_idx = np.unique(np.linspace(0, len(hs) - 1, 7).astype(int))
+            zs = []
+            for si in sample_idx:
+                z, c, rg = zone_of(float(hs[si]), info.h0, info.hc, info.slope_class)
+                if z is not None:
+                    zs.append((int(si), z, c, rg))
+            if zs:
+                counts = {}
+                for _, z, c, rg in zs:
+                    counts[z] = counts.get(z, 0) + 1
+                best = max(counts.items(), key=lambda kv: kv[1])[0]
+                cand = [(abs(float(hs[si]) - info.hc), c, rg, z)
+                        for si, z, c, rg in zs if z == best]
+                cand.sort(reverse=True)
+                zone, ctype, regime = cand[0][3], cand[0][1], cand[0][2]
+                mixed_types = sorted({c for _, z, c, rg in zs}) if len(counts) > 1 else []
+            else:
+                zone, ctype, regime = zone_of(float(hs[0]), info.h0, info.hc, info.slope_class)
+                mixed_types = []
             segs.append(Segment(
                 seg_id=0, reach_index=info.index, curve_type=ctype, regime=regime,
                 direction=int(ch["direction"]), x=xs, h=hs, z_b=z_b, z_w=z_b + hs,
@@ -1143,6 +1163,7 @@ def _build_segments(pr: Params, infos: List[ReachInfo],
                 end_reason=ch.get("reason", "march_end"),
                 len_to_99pct_h0=_len_to_99pct(xs, hs, info.h0),
                 flags={"zone": zone,
+                       "mixed_zones": mixed_types,
                        "near_critical": bool(np.min(np.abs(Fr - 1.0)) < pr.stop_gap * 10),
                        "asymptotic_h0": bool(info.h0 is not None and hs.size and
                                              abs(float(hs[-1]) - info.h0) / info.h0 <= pr.tol_normal * 1.5)},

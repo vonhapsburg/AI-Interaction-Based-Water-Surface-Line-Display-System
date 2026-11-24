@@ -628,6 +628,66 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
+        # ---- 回水预览：给定下游水位，立刻反推沿程水面线与上游抬升 ----
+        if path == "/api/unsteady/backwater":
+            try:
+                from unsteady import solver as us
+                import numpy as _np
+
+                def nv(k, d):
+                    try:
+                        v = body.get(k, d)
+                        return d if v in (None, "", "auto") else float(v)
+                    except (TypeError, ValueError):
+                        return d
+
+                L = nv("L", 10000.0); b = nv("b", 5.0); m = nv("m", 0.0)
+                n = nv("n", 0.015); i0 = nv("i0", 0.001); Q = nv("Q", 10.0)
+                hn = us.normal_depth(b, m, n, i0, Q)
+                hd_raw = body.get("h_dn")
+                hd = hn if hd_raw in (None, "", "auto") else float(hd_raw)
+
+                slots = {"Q": Q, "mode": "teaching",
+                         "reaches": [{"L": L, "i": i0, "b": b, "m": m, "n": n}],
+                         "downstream": "given_h", "h0": hd, "upstream": "none"}
+                a = adapter.build({"slots": slots, "warnings": [], "normalized": ""})
+                res = gvf_core.solve(a["params"])
+                if not res.segments:
+                    return self._json({"ok": False, "error": "无解：请检查下游水位是否合理"})
+
+                xs = _np.concatenate([_np.asarray(s.x, float) for s in res.segments])
+                hs = _np.concatenate([_np.asarray(s.h, float) for s in res.segments])
+                o = _np.argsort(xs)
+                xs, hs = xs[o], hs[o]
+                xg = _np.linspace(0.0, L, 81)
+                hg = _np.interp(xg, xs, hs)
+                rise = hg - hn
+                maxr = float(hd - hn)
+                thr = 0.05 * abs(maxr)
+                up_idx = 0
+                if abs(maxr) > 1e-9:
+                    idx = _np.where(_np.abs(rise) >= thr)[0]
+                    up_idx = int(idx[0]) if len(idx) else len(xg) - 1
+                bw_len = float(L - xg[up_idx]) if abs(maxr) > 1e-9 else 0.0
+                types = [s.curve_type for s in res.segments]
+                return self._json({
+                    "ok": True,
+                    "h_n": round(float(hn), 4),
+                    "h_dn": round(float(hd), 4),
+                    "h_up": round(float(hg[0]), 4),
+                    "rise_up": round(float(hg[0] - hn), 4),
+                    "max_rise": round(maxr, 4),
+                    "backwater_len": round(bw_len, 1),
+                    "curve_types": types,
+                    "x": [round(float(v), 1) for v in xg[::2]],
+                    "h": [round(float(v), 4) for v in hg[::2]],
+                    "hn": round(float(hn), 4),
+                    "warnings": [w.code for w in res.warnings],
+                })
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
         # ---- 非恒定流对话：自然语言改工况 / 解释 / 出题 ----
         if path == "/api/unsteady/chat":
             text = (body.get("text") or "").strip()

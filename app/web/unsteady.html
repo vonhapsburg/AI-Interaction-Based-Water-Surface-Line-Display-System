@@ -49,6 +49,44 @@
   th:first-child,td:first-child{text-align:left;}
   thead th{color:var(--muted);font-weight:500;}
   .note{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.6;}
+
+  /* 模式配色：两种模式两种颜色，当前模式实心 */
+  #modeSeg button{background:#eef3f8;color:#41556b;border:1px solid var(--line);font-weight:600;}
+  #modeSeg button[data-mode="teaching"].on{background:#2e6da4;color:#fff;border-color:#2e6da4;}
+  #modeSeg button[data-mode="engineering"].on{background:#2f7d54;color:#fff;border-color:#2f7d54;}
+  #modeSeg button[data-mode="engineering"]{background:#eef7f2;color:#2f7d54;border-color:#cfe4d8;}
+  .modeBadge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:2px;}
+  .modeBadge.teaching{background:#e6f0fa;color:#2e6da4;}
+  .modeBadge.engineering{background:#e6f4ec;color:#2f7d54;}
+
+  /* 示例算例 */
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px;}
+  .preset{font-size:11.5px;padding:4px 9px;border-radius:99px;border:1px solid var(--line);
+          background:#fbfcfd;color:#41556b;cursor:pointer;font-family:inherit;}
+  .preset:hover{border-color:var(--accent2);color:var(--accent);background:#f2f7fc;}
+  .preset.eng{background:#f4fbf7;border-color:#cfe4d8;color:#2f7d54;}
+
+  /* 猜你想问 */
+  .chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;}
+  .chip{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);
+        background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;}
+  .chip:hover{border-color:var(--accent2);color:var(--accent);}
+
+  /* 可拉伸的对话输入框 */
+  .chat-input textarea{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;
+        padding:6px 8px;font-size:12.5px;font-family:inherit;resize:vertical;
+        min-height:34px;max-height:140px;line-height:1.5;}
+
+  /* auto 提示与回水预览 */
+  .hintline{font-size:11px;color:#7d8b99;margin-top:4px;min-height:15px;}
+  .hintline b{color:var(--accent);}
+  .bwbox{margin-top:8px;border:1px solid var(--line2);border-radius:8px;padding:8px;background:#fcfdfe;}
+  .bwbox .t{font-size:11.5px;color:#5b6b7c;line-height:1.7;}
+  .bwbox .t b{color:#2f7d54;}
+  .bwbox canvas{width:100%;height:110px;display:block;margin-top:6px;}
+  .engTip{background:#f1f9f4;border:1px solid #cfe4d8;color:#2f7d54;border-radius:8px;
+          padding:7px 9px;font-size:11.5px;line-height:1.6;margin:0 0 10px;}
+
   .chat-body{height:210px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:#fcfdfe;}
   .msg{max-width:92%;font-size:12.8px;line-height:1.6;padding:7px 10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;}
   .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
@@ -71,19 +109,29 @@
     <section class="card">
       <div class="card-h">对话交互 <span class="tag">自然语言 → 工况 → 计算</span></div>
       <div class="chat-body" id="chatBody"></div>
+      <div class="chips" id="chatChips"></div>
       <div class="chat-input">
-        <input id="chatInput" placeholder="例如：渠长5公里，底宽5米，流量从10涨到30，1小时涨完，2小时回落，模拟6小时">
+        <textarea id="chatInput" rows="2" placeholder="例如：渠长5公里，底宽5米，流量从10涨到30，1小时涨完，2小时回落，模拟6小时"></textarea>
         <button class="primary" id="chatSend">发送</button>
       </div>
     </section>
 
     <section class="card">
-      <div class="card-h">工况 <span class="tag">矩形/梯形</span></div>
+      <div class="card-h">工况 <span class="tag">矩形/梯形</span><span class="modeBadge teaching" id="modeBadge">教学模式</span></div>
       <div class="card-b">
+
+        <div class="presets" id="presets">
+          <button class="preset" data-p="basic">基本洪水演进</button>
+          <button class="preset" data-p="sharp">陡涨洪水</button>
+          <button class="preset" data-p="long">长渠坦化</button>
+          <button class="preset eng" data-p="backwater">回水顶托</button>
+          <button class="preset eng" data-p="drawdown">下游落水</button>
+        </div>
         <div class="seg" id="modeSeg" style="margin-bottom:8px;width:100%;">
           <button data-mode="teaching" class="on" style="flex:1;">教学模式 · 扩散波</button>
           <button data-mode="engineering" style="flex:1;">工程模式 · 全方程</button>
         </div>
+        <div class="engTip" id="engTip" style="display:none;"><b>工程模式：支持回水顶托。</b>改下游水位后，上游水深会按 c−v 向上游传播；点下面的「预览回水」可以立刻看到沿程水面线。</div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
           <b>教学模式</b>：扩散波（忽略惯性项），算得快，用来讲清“一族曲线 / 削峰 / 绳套”。
         </div>
@@ -98,10 +146,12 @@
           <div class="field"><label>涨水历时 (h)</label><input id="tp" type="number" step="0.1" value="1"></div>
           <div class="field"><label>回落到 Q₀ (h)</label><input id="tb" type="number" step="0.1" value="2"></div>
           <div class="field"><label>模拟总时长 (h)</label><input id="te" type="number" step="1" value="12"></div>
-          <div class="field"><label>下游水位 (m)</label><input id="hdn" type="text" value="auto" title="auto = 正常水深"></div>
+          <div class="field"><label>下游水位 (m)</label><input id="hdn" type="text" value="auto" title="auto = 正常水深"><div class="hintline" id="hnHint">auto = 正在取正常水深…</div></div>
           <div class="field"><label>网格数 Nx</label><input id="Nx" type="number" step="10" value="121"></div>
         </div>
         <button id="run">计算</button>
+        <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>
+        <div class="bwbox" id="bwBox" style="display:none;"><div class="t" id="bwText"></div><canvas id="cBw"></canvas></div>
         <div class="hint" id="msg">上游三角形洪水过程线，下游给定水位。扩散波忽略惯性项，适用于缓变洪水。</div>
       </div>
     </section>
@@ -575,8 +625,168 @@ function bindChat(){
          "也可以问「为什么洪峰变矮了」「绳套为什么是逆时针」，或者说「出几道题」。", "ai");
 }
 
+
+/* ---------------- 模式视觉反馈 ---------------- */
+function updateModeVisuals(){
+  const eng = mode === "engineering";
+  const tip = $("#engTip");
+  if(tip) tip.style.display = eng ? "block" : "none";
+  const badge = $("#modeBadge");
+  if(badge){
+    badge.textContent = eng ? "工程模式" : "教学模式";
+    badge.className = "modeBadge " + (eng ? "engineering" : "teaching");
+  }
+}
+
+/* ---------------- 示例算例 ---------------- */
+const PRESETS = {
+  basic:     {mode:"teaching", L:10000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:12, hdn:"auto"},
+  sharp:     {mode:"teaching", L:8000,  b:4, m:0, n:0.02,  i0:0.002, Q0:6,  Qpeak:40, tp:0.5, tb:1, te:8,  hdn:"auto"},
+  long:      {mode:"teaching", L:30000, b:8, m:0, n:0.022, i0:0.0005,Q0:20, Qpeak:60, tp:2, tb:4, te:24, hdn:"auto"},
+  backwater: {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:1.75},
+  drawdown:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:0.85}
+};
+
+function applyPreset(key){
+  const p = PRESETS[key];
+  if(!p) return;
+  mode = p.mode;
+  document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
+  updateModeVisuals();
+  const set = (id,v)=>{ const el=$(id); if(el) el.value = v; };
+  set("#L",p.L); set("#b",p.b); set("#m",p.m); set("#n",p.n); set("#i0",p.i0);
+  set("#Q0",p.Q0); set("#Qpeak",p.Qpeak); set("#tp",p.tp); set("#tb",p.tb); set("#te",p.te);
+  set("#hdn",p.hdn);
+  refreshHnHint();
+  runCase();
+}
+
+function bindPresets(){
+  document.querySelectorAll("#presets .preset").forEach(btn=>{
+    btn.addEventListener("click", ()=>applyPreset(btn.dataset.p));
+  });
+}
+
+/* ---------------- auto 提示 + 回水即时反馈 ---------------- */
+let hintTimer = null;
+
+async function fetchBackwater(){
+  const hdnRaw = $("#hdn").value.trim();
+  const payload = {
+    L:+$("#L").value, b:+$("#b").value, m:+$("#m").value, n:+$("#n").value,
+    i0:+$("#i0").value, Q:+$("#Q0").value,
+    h_dn: (hdnRaw === "auto" || hdnRaw === "") ? "auto" : +hdnRaw
+  };
+  try{
+    const r = await (await fetch("/api/unsteady/backwater", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    })).json();
+    return r;
+  }catch(e){ return {ok:false, error:e.message}; }
+}
+
+async function refreshHnHint(){
+  const r = await fetchBackwater();
+  const hint = $("#hnHint");
+  if(!hint) return;
+  if(!r.ok){ hint.textContent = "下游水位提示：计算失败（" + (r.error||"") + "）"; return; }
+  const auto = ($("#hdn").value.trim() === "auto");
+  if(auto){
+    hint.innerHTML = "auto = 正常水深 <b>" + r.h_n.toFixed(3) + " m</b>（均匀流，不产生回水）";
+  }else{
+    const d = r.h_dn - r.h_n;
+    const sign = d >= 0 ? "+" : "";
+    const upTxt = (Math.abs(r.rise_up) < 0.0005)
+      ? "上游已回到正常水深（回水长度约 " + (r.backwater_len/1000).toFixed(2) + " km，未及渠首）"
+      : "→ 上游 <b>" + r.h_up.toFixed(3) + " m</b>（抬升 " + (r.rise_up>=0?"+":"") + r.rise_up.toFixed(3) +
+        " m），回水长度约 " + (r.backwater_len/1000).toFixed(2) + " km";
+    hint.innerHTML = "已给 <b>" + r.h_dn.toFixed(3) + " m</b>（较正常水深 " + sign + d.toFixed(3) + " m）" + upTxt;
+  }
+}
+
+function scheduleHint(){ clearTimeout(hintTimer); hintTimer = setTimeout(refreshHnHint, 450); }
+
+async function previewBackwater(){
+  const r = await fetchBackwater();
+  const box = $("#bwBox"), txt = $("#bwText");
+  if(!r.ok){ box.style.display="block"; txt.textContent = "预览失败：" + (r.error||""); return; }
+  box.style.display = "block";
+  const d = r.h_dn - r.h_n;
+  txt.innerHTML =
+    "下游 <b>" + r.h_dn.toFixed(3) + " m</b>（正常水深 " + r.h_n.toFixed(3) + " m）→ " +
+    "上游 <b>" + r.h_up.toFixed(3) + " m</b>，沿程最大变化 " + (d>=0?"+":"") + d.toFixed(3) + " m；" +
+    "回水影响长度约 <b>" + (r.backwater_len/1000).toFixed(2) + " km</b>；型线 " +
+    (r.curve_types||[]).join("→") + "。";
+  drawBackwater(r);
+}
+
+function drawBackwater(r){
+  const cv = $("#cBw");
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 300, h = 110;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const pad = {l:44,r:8,t:8,b:20};
+  const x = r.x, y = r.h;
+  let ymin = Math.min(...y, r.hn), ymax = Math.max(...y, r.hn);
+  const sp = Math.max(ymax-ymin, 0.05); ymin -= sp*0.25; ymax += sp*0.25;
+  const X = v => pad.l + (v - x[0])/(x[x.length-1]-x[0] || 1)*(w-pad.l-pad.r);
+  const Y = v => h-pad.b - (v-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
+  ctx.setLineDash([4,3]); ctx.strokeStyle = "#9aa7b3"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, Y(r.hn)); ctx.lineTo(w-pad.r, Y(r.hn)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  x.forEach((v,i)=>{ i?ctx.lineTo(X(v),Y(y[i])):ctx.moveTo(X(v),Y(y[i])); });
+  ctx.strokeStyle = "#2f7d54"; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = "#7d8b99"; ctx.font = "10px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("hₙ=" + r.hn.toFixed(2) + "（虚线）", pad.l+2, pad.t+9);
+}
+
+/* ---------------- 猜你想问 ---------------- */
+const CHIP_POOL = [
+  "为什么洪峰变矮了？",
+  "绳套为什么是逆时针？",
+  "c_k 和峰现时间怎么算？",
+  "回水为什么能往上游传？",
+  "出几道题",
+  "为什么切到工程模式结果变了一点？"
+];
+let chipIdx = 0;
+
+function renderChips(){
+  const box = $("#chatChips");
+  if(!box) return;
+  box.innerHTML = "";
+  const n = Math.min(3, CHIP_POOL.length);
+  for(let i=0;i<n;i++){
+    const text = CHIP_POOL[(chipIdx + i) % CHIP_POOL.length];
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = text;
+    b.addEventListener("click", ()=>{
+      $("#chatInput").value = text;
+      sendChat();
+    });
+    box.appendChild(b);
+  }
+  chipIdx = (chipIdx + 1) % CHIP_POOL.length;
+}
+
+/* ---------------- 输入框自增高 ---------------- */
+function autoGrow(el){
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+
 bindModeSeg();
 bindChat();
+bindPresets();
+document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("click", updateModeVisuals));
+["#L","#b","#m","#n","#i0","#Q0"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", scheduleHint); });
+if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
+if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
+if($("#chatInput")){ $("#chatInput").addEventListener("input", e=>autoGrow(e.target)); }
+refreshHnHint(); renderChips(); setInterval(renderChips, 9000);
 $("#run").addEventListener("click", runCase);
 
 /* 稳态回归：与恒定流内核逐点对比（外部锚点，不是自证） */
