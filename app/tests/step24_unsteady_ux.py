@@ -59,6 +59,31 @@ def main():
         check("模式两色", 'data-mode="teaching"].on' in html and 'data-mode="engineering"].on' in html)
         check("猜你想问含机理题", "为什么洪峰变矮了" in html and "出几道题" in html)
 
+    if isinstance(html, str):
+        check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)
+        check("对话记录可拉伸", "resize:vertical" in html and "chat-body" in html)
+        check("猜你想问有标题", "猜你想问" in html)
+        check("计算中遮罩", 'id="busy"' in html and "spin" in html)
+        check("悬停提示层", 'id="tip"' in html and 'class="plot"' in html)
+        check("公式速查卡", "公式速查" in html and "Preissmann" in html)
+        check("随机算例按钮", 'id="randBtn"' in html)
+
+    lines.append("")
+    lines.append("=== 随机算例 ===")
+    import json as _json
+    got = 0
+    for _ in range(3):
+        code, jr = req("/api/unsteady/random", {})
+        if code == 200 and jr.get("ok"):
+            got += 1
+            checks_ok = (jr["h_n"] > 0 and jr["mode"] in ("teaching", "engineering")
+                         and jr["Qpeak"] > jr["Q0"] and jr["tb"] > jr["tp"]
+                         and jr["te"] >= jr["tb"])
+            if not checks_ok:
+                got -= 1
+                break
+    check("随机算例 3 次都物理合理", got == 3, got)
+
     lines.append("")
     lines.append("=== 回水反推接口 ===")
     common = {"L": 500, "b": 5, "m": 0, "n": 0.015, "i0": 0.001, "Q": 10}

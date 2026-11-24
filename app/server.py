@@ -688,6 +688,65 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
+        # ---- 随机算例：生成一个物理合理、可直接计算的非恒定工况 ----
+        if path == "/api/unsteady/random":
+            try:
+                import random as _rd
+                from unsteady import solver as us
+
+                picked = None
+                for _ in range(40):
+                    L = float(_rd.choice([2000, 3000, 5000, 8000, 10000]))
+                    b = round(_rd.uniform(3.0, 10.0), 1)
+                    m = _rd.choice([0.0, 0.0, 0.5, 1.0, 1.5])
+                    n = round(_rd.uniform(0.012, 0.028), 3)
+                    i0 = round(_rd.uniform(0.0003, 0.0012), 4)
+                    Q0 = round(_rd.uniform(5.0, 20.0), 1)
+                    Qpeak = round(Q0 * _rd.uniform(1.6, 2.8), 1)
+                    tp = float(_rd.choice([0.5, 1.0, 1.5, 2.0]))
+                    tb = round(tp + _rd.choice([0.5, 1.0, 1.5, 2.0]), 1)
+                    te = max(6.0, round(tb * 3.0, 1))
+                    Nx = int(_rd.choice([81, 101, 121]))
+                    try:
+                        hn = us.normal_depth(b, m, n, i0, Q0)
+                        ic = gvf_core.critical_slope(
+                            gvf_core.Section("rectangular" if m < 1e-9 else "trapezoidal", b, m),
+                            n, Q0, 1.0, 9.81)
+                    except Exception:
+                        continue
+                    if hn is None or hn <= 0 or i0 >= ic:
+                        continue
+                    mode = _rd.choice(["teaching", "engineering"])
+                    if mode == "engineering":
+                        hd = round(hn * _rd.uniform(0.85, 1.25), 3)
+                        hdn = hd
+                    else:
+                        hdn = "auto"
+                    # 估算步数，避免抽到需要几十秒的算例
+                    import math as _m
+                    B = b + 2.0 * m * hn
+                    D = Qpeak / (2.0 * max(B, 1e-6) * i0)
+                    dx = L / (Nx - 1)
+                    if mode == "teaching":
+                        dt_est = 0.7 * dx * dx / (2.0 * D)
+                        if dt_est <= 0 or te * 3600.0 / dt_est > 60000:
+                            continue
+                    else:
+                        c_est = _m.sqrt(9.81 * hn)
+                        dt_est = min(max(0.5 * dx / c_est, 5.0), 60.0)
+                        if te * 3600.0 / dt_est > 6000:
+                            continue
+                    picked = {"mode": mode, "L": L, "b": b, "m": m, "n": n, "i0": i0,
+                              "Q0": Q0, "Qpeak": Qpeak, "tp": tp, "tb": tb, "te": te,
+                              "Nx": Nx, "hdn": hdn, "h_n": round(float(hn), 4)}
+                    break
+                if picked is None:
+                    return self._json({"ok": False, "error": "随机生成失败，请重试"})
+                picked["ok"] = True
+                return self._json(picked)
+            except Exception as e:
+                return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
         # ---- 非恒定流对话：自然语言改工况 / 解释 / 出题 ----
         if path == "/api/unsteady/chat":
             text = (body.get("text") or "").strip()

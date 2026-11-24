@@ -67,10 +67,14 @@
   .preset.eng{background:#f4fbf7;border-color:#cfe4d8;color:#2f7d54;}
 
   /* 猜你想问 */
+  .chips-title{font-size:11px;color:#8b98a6;padding:2px 10px 4px;}
   .chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;}
   .chip{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);
         background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;}
   .chip:hover{border-color:var(--accent2);color:var(--accent);}
+  .chip.c2{background:#fff7ef;border-color:#f0dcc6;color:#a8681f;}
+  .chip.c3{background:#f1f9f4;border-color:#cfe4d8;color:#2f7d54;}
+  .chip.c4{background:#f4f2fb;border-color:#ddd6ee;color:#5a4a91;}
 
   /* 可拉伸的对话输入框 */
   .chat-input textarea{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;
@@ -84,10 +88,46 @@
   .bwbox .t{font-size:11.5px;color:#5b6b7c;line-height:1.7;}
   .bwbox .t b{color:#2f7d54;}
   .bwbox canvas{width:100%;height:110px;display:block;margin-top:6px;}
+
+  /* 置顶模式栏 */
+  .modebar{background:linear-gradient(180deg,#f7fafd,#eef4fa);border-bottom:1px solid var(--line2);
+           padding:13px 16px 12px;text-align:center;}
+  .modebar-in{display:flex;align-items:center;justify-content:center;gap:14px;max-width:980px;margin:0 auto;flex-wrap:wrap;}
+  .modebar-label{font-size:12.5px;color:#5b6b7c;font-weight:600;}
+  #modeSeg{width:520px;max-width:100%;margin:0;}
+  #modeSeg button{padding:9px 0;font-size:13.5px;}
+
+  /* 图表悬停 */
+  .plot{position:relative;}
+  .plot canvas.base{display:block;width:100%;}
+  .plot canvas.ovl{position:absolute;left:0;top:0;width:100%;pointer-events:none;}
+  #tip{position:fixed;z-index:99;pointer-events:none;display:none;background:rgba(31,45,58,.94);
+       color:#fff;font-size:11.5px;line-height:1.55;padding:6px 9px;border-radius:6px;
+       white-space:pre;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+
+  /* 计算中遮罩 */
+  #busy{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
+        background:rgba(246,249,252,.55);backdrop-filter:blur(1px);}
+  #busy .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 26px;
+             box-shadow:0 10px 30px rgba(20,40,60,.15);display:flex;align-items:center;gap:14px;}
+  .spin{width:26px;height:26px;border-radius:50%;border:3px solid #dbe6f0;border-top-color:#2e6da4;
+        animation:sp .8s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  #busyText{font-size:13px;color:#41556b;}
+  #busyText b{color:var(--accent);}
+
+  /* 公式速查 */
+  .fmlbox{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;font-size:12px;color:#41556b;}
+  .fmlbox .f b{display:block;color:var(--accent);margin-bottom:3px;font-size:12px;}
+  .fmlbox .f code{font-family:ui-monospace,Consolas,monospace;color:#2c3e50;
+                  background:#f4f7fa;border:1px solid #e7edf3;padding:2px 6px;border-radius:4px;
+                  display:inline-block;line-height:1.7;}
+  .fmlbox .f span{color:#8b98a6;}
+  @media(max-width:760px){ .fmlbox{grid-template-columns:1fr;} }
   .engTip{background:#f1f9f4;border:1px solid #cfe4d8;color:#2f7d54;border-radius:8px;
           padding:7px 9px;font-size:11.5px;line-height:1.6;margin:0 0 10px;}
 
-  .chat-body{height:210px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:#fcfdfe;}
+  .chat-body{height:210px;resize:vertical;min-height:130px;max-height:430px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:#fcfdfe;}
   .msg{max-width:92%;font-size:12.8px;line-height:1.6;padding:7px 10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;}
   .msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px;}
   .msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px;}
@@ -104,11 +144,26 @@
   <a href="/">← 返回恒定流系统</a>
 </header>
 
+<div class="modebar">
+  <div class="modebar-in">
+    <span class="modebar-label">计算模式</span>
+    <div class="seg" id="modeSeg">
+      <button data-mode="teaching" class="on">教学模式 · 扩散波</button>
+      <button data-mode="engineering">工程模式 · 全方程</button>
+    </div>
+  </div>
+  <div class="engTip" id="engTip" style="display:none;max-width:880px;margin:10px auto 0;text-align:left;"><b>工程模式：支持回水顶托。</b>改下游水位后，上游水深会按 c−v 向上游传播；点下面的「预览回水」可以立刻看到沿程水面线。</div>
+</div>
+
+<div id="busy"><div class="box"><div class="spin"></div><div id="busyText">计算中…</div></div></div>
+<div id="tip"></div>
+
 <div class="wrap">
     <aside>
     <section class="card">
       <div class="card-h">对话交互 <span class="tag">自然语言 → 工况 → 计算</span></div>
       <div class="chat-body" id="chatBody"></div>
+      <div class="chips-title">猜你想问 · 点一下直接发送</div>
       <div class="chips" id="chatChips"></div>
       <div class="chat-input">
         <textarea id="chatInput" rows="2" placeholder="例如：渠长5公里，底宽5米，流量从10涨到30，1小时涨完，2小时回落，模拟6小时"></textarea>
@@ -126,12 +181,8 @@
           <button class="preset" data-p="long">长渠坦化</button>
           <button class="preset eng" data-p="backwater">回水顶托</button>
           <button class="preset eng" data-p="drawdown">下游落水</button>
+          <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
         </div>
-        <div class="seg" id="modeSeg" style="margin-bottom:8px;width:100%;">
-          <button data-mode="teaching" class="on" style="flex:1;">教学模式 · 扩散波</button>
-          <button data-mode="engineering" style="flex:1;">工程模式 · 全方程</button>
-        </div>
-        <div class="engTip" id="engTip" style="display:none;"><b>工程模式：支持回水顶托。</b>改下游水位后，上游水深会按 c−v 向上游传播；点下面的「预览回水」可以立刻看到沿程水面线。</div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
           <b>教学模式</b>：扩散波（忽略惯性项），算得快，用来讲清“一族曲线 / 削峰 / 绳套”。
         </div>
@@ -199,21 +250,21 @@
   <main class="right">
     <section class="card">
       <div class="card-h">① 一条曲线 → 一族曲线 <span class="tag">不同时刻的瞬时水面线（高程 z）</span></div>
-      <div class="card-b"><canvas id="cFamily" height="300"></canvas>
+      <div class="card-b"><div class="plot"><canvas id="cFamily" class="base" height="300"></canvas><canvas id="ovlFamily" class="ovl"></canvas></div>
         <div class="note">恒定流的水面线是 h(s)；非恒定流是 h(s,t)，这里把若干时刻叠在一起看。</div>
       </div>
     </section>
 
     <section class="card">
       <div class="card-h">② 洪峰变矮、变胖、变慢 <span class="tag">同一张图上的断面流量过程线</span></div>
-      <div class="card-b"><canvas id="cHydro" height="260"></canvas>
+      <div class="card-b"><div class="plot"><canvas id="cHydro" class="base" height="260"></canvas><canvas id="ovlHydro" class="ovl"></canvas></div>
         <div class="note">峰值沿程下降不是"水少了"，而是同样的水量被摊到更长的时间里。</div>
       </div>
     </section>
 
     <section class="card">
       <div class="card-h">③ 绳套：水位—流量多值关系 <span class="tag">非恒定流独有的指纹</span></div>
-      <div class="card-b"><canvas id="cLoop" height="300"></canvas>
+      <div class="card-b"><div class="plot"><canvas id="cLoop" class="base" height="300"></canvas><canvas id="ovlLoop" class="ovl"></canvas></div>
         <div class="note" id="loopNote">虚线为恒定（均匀流）水位-流量关系；实线为本次非恒定过程。</div>
       </div>
     </section>
@@ -228,6 +279,20 @@
         <b>一个必须说清的理论限制</b>：扩散波是<b>抛物型</b>方程，扰动传播速度在数学上是<b>无穷大</b>，
         所以本页<b>不能</b>演示"急流时下游扰动传不上去"这类特征线现象——那需要双曲型的全圣维南方程。
         另外，稳态回归的偏差主要来自扩散波对回水的线性化近似（非数值误差）。
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">公式速查 <span class="tag">本页用到的方程与离散</span></div>
+      <div class="card-b fmlbox">
+        <div class="f"><b>连续方程</b><code>∂A/∂t + ∂Q/∂s = 0</code><br><span>即 B·∂h/∂t + ∂Q/∂s = 0（B 为水面宽）</span></div>
+        <div class="f"><b>动量方程（全方程）</b><code>∂Q/∂t + ∂(Q²/A)/∂s + gA∂h/∂s + gA(S_f − i₀) = 0</code><br><span>工程模式保留全部惯性项</span></div>
+        <div class="f"><b>扩散波（教学模式）</b><code>Q = K·√(i₀ − ∂h/∂s)，K = A·R^(2/3)/n</code><br><span>忽略惯性项，得抛物型方程</span></div>
+        <div class="f"><b>运动波速</b><code>c_k = dQ/dA = (5/3)·v</code><br><span>仅宽浅矩形成立；梯形需数值求导</span></div>
+        <div class="f"><b>特征线</b><code>ds/dt = v ± c，c = √(gA/B)</code><br><span>缓流可上溯的扰动速度就是 c − v</span></div>
+        <div class="f"><b>Preissmann 四点隐式</b><code>f ≈ ψf_{i+1} + (1−ψ)f_i；∂f/∂t ≈ [ψΔf_{i+1} + (1−ψ)Δf_i]/Δt</code><br><span>θ 控制时间加权，本页 θ=0.7、ψ=0.5</span></div>
+        <div class="f"><b>回水长度</b><code>L_b ≈ (h − h₀) / i₀</code><br><span>界面显示的是「抬升降到 5% 抬升量」处的实际长度</span></div>
+        <div class="f"><b>坦化与绳套</b><code>∂h/∂t ≠ 0 ⇒ 附加比降 ≠ 0 ⇒ h(Q) 多值</code><br><span>涨水段同一 Q 下 h 偏低，落水段偏高，于是成环</span></div>
       </div>
     </section>
   </main>
@@ -264,7 +329,11 @@ function bindModeSeg(){
 function setMsg(text, cls){ const m = $("#msg"); m.textContent = text; m.className = "hint" + (cls ? " "+cls : ""); }
 
 async function runCase(){
-  const btn = $("#run"); btn.disabled = true; setMsg("计算中…");
+  const btn = $("#run"); btn.disabled = true;
+  const label = (currentModel() === "preissmann")
+    ? "全方程隐式求解中（Preissmann + Newton）…" : "扩散波显式推进中…";
+  setMsg(label);
+  showBusy(label);
   const payload = {
     model: currentModel(),
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
@@ -288,7 +357,7 @@ async function runCase(){
            (last.ms/1000).toFixed(1) + " s", "ok");
   }catch(e){
     setMsg("请求失败：" + e.message, "err");
-  }finally{ btn.disabled = false; }
+  }finally{ hideBusy(); btn.disabled = false; }
 }
 
 function setup(cv, h){
@@ -358,6 +427,12 @@ function drawFamily(R){
   ctx.fillText("里程 s (m)", (pad.l+w-pad.r)/2, h-8);
   ctx.save(); ctx.translate(14, (pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText("高程 z (m)", 0, 0); ctx.restore();
+  registerHover("cFamily", {pad, w, h, x0:x[0], x1:x[x.length-1],
+    y0: ymin - span*0.05, y1: ymin - span*0.05 + span*1.15, xs:x,
+    series: snaps.map((hs,k)=>({name:"t="+hours[k]+"h", color:"#2e6da4",
+      ys: hs.map((v,i)=>bed[i]+v)})),
+    fmt: i => "s = " + x[i].toFixed(1) + " m\n" +
+      snaps.map((hs,k)=> "t=" + hours[k] + "h : z = " + (bed[i]+hs[i]).toFixed(3) + " m").join("\n")});
 }
 
 /* ② 断面流量过程线 */
@@ -411,6 +486,11 @@ function drawHydro(R){
   ctx.fillText("时间 t (h)", (pad.l+w-pad.r)/2, h-8);
   ctx.save(); ctx.translate(14,(pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText("流量 Q (m³/s)", 0, 0); ctx.restore();
+  registerHover("cHydro", {pad, w, h, x0:0, x1:tmax,
+    y0: qmin - span*0.1, y1: (qmin - span*0.1) + (qmax-qmin)*1.2, xs:T,
+    series: R.stations.map((st,k)=>({name:"x="+Math.round(st.x), color:COL[k%COL.length], ys:st.Q})),
+    fmt: i => "t = " + T[i].toFixed(2) + " h\n" +
+      R.stations.map((st,k)=> "x=" + Math.round(st.x) + "m : Q = " + st.Q[i].toFixed(2)).join("\n")});
 }
 
 /* ③ 绳套：中间断面 h–Q */
@@ -477,6 +557,10 @@ function drawLoop(R){
   ctx.fillText("流量 Q (m³/s)", (pad.l+w-pad.r)/2, h-8);
   ctx.save(); ctx.translate(14,(pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText("水深 h (m)", 0, 0); ctx.restore();
+  registerHover("cLoop", {pad, w, h, x0:qmin, x1:qmax, y0:hmin, y1:hmax, xs:Q,
+    series:[{name:"过程线", color:"#b23c4a", ys:H}],
+    fmt: i => "Q = " + Q[i].toFixed(2) + " m³/s\n" + "h = " + H[i].toFixed(3) + " m\n" +
+      "t ≈ " + (R.t[i] ? (R.t[i]/3600).toFixed(2) + " h" : "—")});
 }
 
 function drawDiag(R){
@@ -745,12 +829,16 @@ function drawBackwater(r){
 
 /* ---------------- 猜你想问 ---------------- */
 const CHIP_POOL = [
-  "为什么洪峰变矮了？",
-  "绳套为什么是逆时针？",
-  "c_k 和峰现时间怎么算？",
-  "回水为什么能往上游传？",
-  "出几道题",
-  "为什么切到工程模式结果变了一点？"
+  {t:"为什么洪峰变矮了？", c:""},
+  {t:"绳套为什么是逆时针？", c:"c2"},
+  {t:"c_k 和峰现时间怎么算？", c:"c3"},
+  {t:"回水为什么能往上游传？", c:"c4"},
+  {t:"扩散波和全方程差在哪？", c:""},
+  {t:"下游水位抬高会怎样？", c:"c2"},
+  {t:"涨水段为什么水位偏低？", c:"c3"},
+  {t:"出几道题", c:"c4"},
+  {t:"质量守恒误差说明什么？", c:""},
+  {t:"帮我解释绳套的面积", c:"c2"}
 ];
 let chipIdx = 0;
 
@@ -758,13 +846,13 @@ function renderChips(){
   const box = $("#chatChips");
   if(!box) return;
   box.innerHTML = "";
-  const n = Math.min(3, CHIP_POOL.length);
+  const n = Math.min(4, CHIP_POOL.length);
   for(let i=0;i<n;i++){
-    const text = CHIP_POOL[(chipIdx + i) % CHIP_POOL.length];
+    const item = CHIP_POOL[(chipIdx + i) % CHIP_POOL.length];
     const b = document.createElement("button");
-    b.className = "chip"; b.type = "button"; b.textContent = text;
+    b.className = "chip " + (item.c || ""); b.type = "button"; b.textContent = item.t;
     b.addEventListener("click", ()=>{
-      $("#chatInput").value = text;
+      $("#chatInput").value = item.t;
       sendChat();
     });
     box.appendChild(b);
@@ -778,13 +866,118 @@ function autoGrow(el){
   el.style.height = Math.min(el.scrollHeight, 140) + "px";
 }
 
+
+/* ---------------- 图表悬停 ---------------- */
+const hoverData = {};
+function registerHover(id, d){ hoverData[id] = d; }
+
+function showTip(text, cx, cy){
+  const tip = $("#tip");
+  tip.textContent = text;
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let left = cx + 14, top = cy + 14;
+  if(left + w > window.innerWidth - 8) left = cx - w - 14;
+  if(top + h > window.innerHeight - 8) top = cy - h - 14;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+function hideTip(){ $("#tip").style.display = "none"; }
+
+function bindHover(){
+  ["cFamily","cHydro","cLoop"].forEach(id=>{
+    const base = document.getElementById(id);
+    if(!base || base.dataset.hoverBound) return;
+    base.dataset.hoverBound = "1";
+    const ovl = base.parentElement.querySelector("canvas.ovl");
+    base.addEventListener("mousemove", e=>{
+      const d = hoverData[id];
+      if(!d) return;
+      const rect = base.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const dpr = window.devicePixelRatio || 1;
+      ovl.width = base.width; ovl.height = base.height;
+      ovl.style.height = base.clientHeight + "px";
+      const ctx = ovl.getContext("2d");
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.clearRect(0,0,base.clientWidth, base.clientHeight);
+      if(px < d.pad.l || px > d.w-d.pad.r || py < d.pad.t || py > d.h-d.pad.b){ hideTip(); return; }
+      const vx = d.x0 + (px-d.pad.l)/(d.w-d.pad.l-d.pad.r)*(d.x1-d.x0);
+      let i = 0, best = Infinity;
+      for(let k=0;k<d.xs.length;k++){ const dd = Math.abs(d.xs[k]-vx); if(dd<best){ best=dd; i=k; } }
+      const X = v => d.pad.l + (v-d.x0)/(d.x1-d.x0)*(d.w-d.pad.l-d.pad.r);
+      const Y = v => d.h - d.pad.b - (v-d.y0)/(d.y1-d.y0)*(d.h-d.pad.t-d.pad.b);
+      const xp = X(d.xs[i]);
+      ctx.save(); ctx.setLineDash([4,3]); ctx.strokeStyle = "rgba(46,109,164,.6)";
+      ctx.beginPath(); ctx.moveTo(xp, d.pad.t); ctx.lineTo(xp, d.h-d.pad.b); ctx.stroke(); ctx.restore();
+      d.series.forEach(sr=>{
+        if(sr.ys[i]==null) return;
+        ctx.beginPath(); ctx.arc(xp, Y(sr.ys[i]), 3.6, 0, Math.PI*2);
+        ctx.fillStyle = sr.color; ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.stroke();
+      });
+      showTip(d.fmt(i), e.clientX, e.clientY);
+    });
+    base.addEventListener("mouseleave", ()=>{
+      const ctx = ovl.getContext("2d");
+      ctx.clearRect(0,0,base.clientWidth, base.clientHeight);
+      hideTip();
+    });
+  });
+}
+
+/* ---------------- 计算中反馈 ---------------- */
+let busyTimer = null, busyStart = 0;
+function showBusy(label){
+  busyStart = performance.now();
+  const box = $("#busy");
+  box.style.display = "flex";
+  const upd = () => {
+    $("#busyText").innerHTML = label + "<br><b>" +
+      ((performance.now()-busyStart)/1000).toFixed(1) + " s</b>";
+  };
+  upd();
+  clearInterval(busyTimer);
+  busyTimer = setInterval(upd, 100);
+}
+function hideBusy(){ $("#busy").style.display = "none"; clearInterval(busyTimer); }
+
+/* ---------------- 随机算例 ---------------- */
+async function randomCase(){
+  const btn = $("#randBtn");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await (await fetch("/api/unsteady/random", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"
+    })).json();
+    if(!r.ok){ setMsg("随机算例失败：" + (r.error || ""), "err"); return; }
+    const p = r.params;
+    mode = p.mode;
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
+    updateModeVisuals();
+    const set = (id,v)=>{ const el=$(id); if(el) el.value = v; };
+    set("#L",p.L); set("#b",p.b); set("#m",p.m); set("#n",p.n); set("#i0",p.i0);
+    set("#Q0",p.Q0); set("#Qpeak",p.Qpeak); set("#tp",p.tp); set("#tb",p.tb); set("#te",p.te);
+    set("#Nx",p.Nx);
+    set("#hdn", p.hdn);
+    refreshHnHint();
+    runCase();
+  }catch(e){
+    setMsg("随机算例请求失败：" + e.message, "err");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
 bindModeSeg();
 bindChat();
+bindHover();
 bindPresets();
 document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("click", updateModeVisuals));
 ["#L","#b","#m","#n","#i0","#Q0"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", scheduleHint); });
 if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
+if($("#randBtn")) $("#randBtn").addEventListener("click", randomCase);
 if($("#chatInput")){ $("#chatInput").addEventListener("input", e=>autoGrow(e.target)); }
 refreshHnHint(); renderChips(); setInterval(renderChips, 9000);
 $("#run").addEventListener("click", runCase);
