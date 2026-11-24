@@ -611,6 +611,13 @@ class Handler(SimpleHTTPRequestHandler):
                 h_dn_body = body.get("h_dn")
                 h_dn = None if h_dn_body in (None, "", "auto") else float(h_dn_body)
                 model = (body.get("model") or "diffusion").lower()
+                # 时间轴：dense=true 时返回 40+ 帧，供页面滑块逐帧查看
+                snap_hours = None
+                if body.get("dense"):
+                    nf = int(num("frames", 41))
+                    nf = max(9, min(nf, 81))
+                    span_h = (te or 43200.0) / 3600.0
+                    snap_hours = [span_h * i / (nf - 1) for i in range(nf)]
 
                 if model == "preissmann":
                     # 全方程：初场取恒定解，避免 t=0 的虚假波
@@ -634,13 +641,93 @@ class Handler(SimpleHTTPRequestHandler):
                     res = up.run(
                         L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                         t_peak=tp, t_base=tb, t_end=te, h_dn=hd,
-                        h_init=h_init, Nx=Nx)
+                        h_init=h_init, Nx=Nx, snap_hours=snap_hours)
                 else:
                     res = us.run(
                         L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                         t_peak=tp, t_base=tb, t_end=te,
-                        h_dn=h_dn, Nx=Nx)
+                        h_dn=h_dn, Nx=Nx, snap_hours=snap_hours)
                 return self._json({"ok": True, "result": res})
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        # ---- 特征线实验：下游加小扰动，看它能不能往上游跑 ----
+        if path == "/api/unsteady/characteristic":
+            try:
+                import math as _math
+                from unsteady import preissmann as up
+                from unsteady import solver as us
+
+                def num(k, d):
+                    try:
+                        v = body.get(k, d)
+                        return d if v in (None, "", "auto") else float(v)
+                    except (TypeError, ValueError):
+                        return d
+
+                L = num("L", 1000.0); b = num("b", 5.0); m = num("m", 0.0)
+                n = num("n", 0.015); i0 = num("i0", 0.001); Q0 = num("Q0", 10.0)
+                amp = num("amp", 0.2)
+
+                hn = us.normal_depth(b, m, n, i0, Q0)
+                A0 = hn * (b + m * hn)
+                B0 = b + 2.0 * m * hn
+                v0 = Q0 / A0
+                c0 = _math.sqrt(9.81 * A0 / B0)
+                Fr0 = v0 / c0
+                c_minus = c0 - v0
+                c_plus = c0 + v0
+
+                out = {"ok": True, "h_n": round(float(hn), 4), "v": round(v0, 4),
+                       "c": round(c0, 4), "Fr": round(Fr0, 4),
+                       "c_minus_v": round(c_minus, 4), "c_plus_v": round(c_plus, 4),
+                       "L": L, "amp": amp,
+                       "regime": "supercritical" if Fr0 >= 1.0 else "subcritical"}
+
+                if Fr0 >= 1.0:
+                    # 急流：理论上下游扰动不能上溯，这里不给数值实验（边界提法不同）
+                    out["theory_up"] = None
+                    out["measured_up"] = None
+                    out["points"] = []
+                    out["note"] = ("急流（Fr=%.2f>1）：特征线 v−c<0 仍指向下游，"
+                                   "下游扰动无法上溯；数值演示需急流专用边界，见能力边界。"
+                                   % Fr0)
+                    out["verdict"] = "blocked"
+                    return self._json(out)
+
+                t_theory = L / max(c_minus, 1e-6)
+                t_end = min(max(2.2 * t_theory, 600.0), 6 * 3600.0)
+                h_dn = hn + amp
+                h_init = np.full(int(num("Nx", 41)), hn)
+                res = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Q0,
+                             t_peak=60.0, t_base=120.0, t_end=t_end,
+                             h_dn=h_dn, h_init=h_init, Nx=int(num("Nx", 41)),
+                             snap_hours=[0.0])
+                T = np.asarray(res["t"], float)
+                sts = res["stations"]
+                thr = 0.02 * abs(amp)
+                pts = []
+                for st in sts:
+                    hh = np.asarray(st["h"], float)
+                    dev = np.abs(hh - hn)
+                    idx = int(np.argmax(dev >= thr)) if np.any(dev >= thr) else -1
+                    arr = float(T[idx]) if idx >= 0 else None
+                    pts.append({"x": st["x"], "arrival": arr})
+                up_pt = [p for p in pts if p["x"] <= 1e-6]
+                measured = up_pt[0]["arrival"] if up_pt else None
+                err = ((measured - t_theory) / t_theory) if measured else None
+                out.update({
+                    "t_end": round(t_end, 1),
+                    "theory_up": round(t_theory, 1),
+                    "measured_up": None if measured is None else round(measured, 1),
+                    "err": None if err is None else round(err, 4),
+                    "points": pts,
+                    "verdict": ("rises" if measured is not None else "no_response"),
+                    "note": ("缓流（Fr=%.2f<1）：下游扰动沿 v−c=%.2f m/s 上溯，"
+                             "理论用时 %.0f s。" % (Fr0, c_minus, t_theory)),
+                })
+                return self._json(out)
             except Exception as e:
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)

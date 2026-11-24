@@ -137,6 +137,16 @@
   .chat-input input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12.5px;font-family:inherit;}
   .chat-input input:focus{outline:none;border-color:var(--accent2);}
   .chat-input button{width:auto;margin:0;padding:6px 12px;}
+  /* 时间轴滑块 */
+  .tline{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:#5b6b7b;}
+  .tline input[type=range]{flex:1;accent-color:#2e6da4;}
+  .tline b{color:#2e6da4;min-width:66px;text-align:right;}
+  .charRow{display:flex;gap:8px;margin-bottom:8px;}
+  .charRow button{flex:1;margin:0;padding:7px 0;font-size:12.5px;}
+  .charRow button[data-k="sub"]{background:#2e6da4;}
+  .charRow button[data-k="sup"]{background:#c9741f;}
+  #charVerdict{font-size:12px;line-height:1.7;color:#41556b;}
+  #charVerdict b{color:#2e6da4;}
 </style>
 </head>
 <body>
@@ -273,7 +283,12 @@ window.addEventListener("unhandledrejection", function(e){
     <section class="card">
       <div class="card-h">① 一条曲线 → 一族曲线 <span class="tag">不同时刻的瞬时水面线（高程 z）</span></div>
       <div class="card-b"><div class="plot"><canvas id="cFamily" class="base" height="300"></canvas><canvas id="ovlFamily" class="ovl"></canvas></div>
-        <div class="note">恒定流的水面线是 h(s)；非恒定流是 h(s,t)，这里把若干时刻叠在一起看。</div>
+        <div class="tline">
+          <span>时间轴</span>
+          <input type="range" id="tSlider" min="0" max="0" value="0">
+          <b id="tLabel">t = 0 h</b>
+        </div>
+        <div class="note">恒定流的水面线是 h(s)；非恒定流是 h(s,t)。拖动滑块可逐帧看水面线怎么抬起来、又怎么退下去。</div>
       </div>
     </section>
 
@@ -288,6 +303,18 @@ window.addEventListener("unhandledrejection", function(e){
       <div class="card-h">③ 绳套：水位—流量多值关系 <span class="tag">非恒定流独有的指纹</span></div>
       <div class="card-b"><div class="plot"><canvas id="cLoop" class="base" height="300"></canvas><canvas id="ovlLoop" class="ovl"></canvas></div>
         <div class="note" id="loopNote">虚线为恒定（均匀流）水位-流量关系；实线为本次非恒定过程。</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">④ 特征线：扰动能不能往上游跑 <span class="tag">v ± c</span></div>
+      <div class="card-b">
+        <div class="charRow">
+          <button type="button" data-k="sub">缓坡算例（Fr&lt;1）</button>
+          <button type="button" data-k="sup">陡坡算例（Fr&gt;1）</button>
+        </div>
+        <canvas id="cChar" height="240"></canvas>
+        <div id="charVerdict" style="margin-top:8px;">点上面的按钮做一次实验：在渠道下游加一个小水位扰动，看它能不能传到上游。</div>
       </div>
     </section>
 
@@ -375,6 +402,7 @@ async function runCase(){
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
     t_end: (+$("#te").value) * 3600, Nx: +$("#Nx").value,
+    dense: true, frames: 41,
     h_dn: $("#hdn").value.trim() === "auto" ? null : +$("#hdn").value
   };
   try{
@@ -405,11 +433,12 @@ function setup(cv, h){
 }
 
 function drawAll(R){
-  drawFamily(R); drawHydro(R); drawLoop(R); drawDiag(R);
+  drawFamily(R, null); drawHydro(R); drawLoop(R); drawDiag(R);
+  initTimeSlider(R);
 }
 
 /* ① 一族曲线：高程 z = z_b + h，渠底 z_b = -i0 x */
-function drawFamily(R){
+function drawFamily(R, sel){
   const {ctx, w, h} = setup($("#cFamily"), 300);
   const pad = {l:56,r:16,t:18,b:34};
   const x = R.x, snaps = R.h_snap, hours = R.t_snap_hours;
@@ -444,14 +473,20 @@ function drawFamily(R){
   snaps.forEach((hs, k) => {
     ctx.beginPath();
     x.forEach((v,i)=>{ const z = bed[i] + hs[i]; i?ctx.lineTo(X(v),Y(z)):ctx.moveTo(X(v),Y(z)); });
-    const alpha = 0.25 + 0.75 * (k / Math.max(snaps.length-1,1));
+    const isSel = (sel != null && k === sel);
+    const alpha = (sel == null)
+      ? 0.25 + 0.75 * (k / Math.max(snaps.length-1,1))
+      : (isSel ? 1.0 : 0.16);
     ctx.strokeStyle = "rgba(46,109,164," + alpha.toFixed(2) + ")";
-    ctx.lineWidth = k === snaps.length-1 ? 2.6 : 1.8;
+    ctx.lineWidth = isSel ? 3.0 : (sel == null && k === snaps.length-1 ? 2.6 : 1.8);
     ctx.stroke();
-    const xi = Math.floor(x.length*0.62);
-    ctx.fillStyle = "rgba(46,109,164,.85)";
-    ctx.font = "10.5px sans-serif"; ctx.textAlign = "left";
-    ctx.fillText("t=" + hours[k] + "h", X(x[xi]) , Y(bed[xi]+hs[xi]) - 5 - k*0);
+    if(sel == null || isSel){
+      const xi = Math.floor(x.length*0.62);
+      ctx.fillStyle = isSel ? "#b23c4a" : "rgba(46,109,164,.85)";
+      ctx.font = (isSel ? "600 11.5px" : "10.5px") + " sans-serif"; ctx.textAlign = "left";
+      ctx.fillText("t=" + hours[k] + "h" + (isSel ? "（当前）" : ""),
+                   X(x[xi]), Y(bed[xi]+hs[xi]) - 5);
+    }
   });
   // 坐标轴
   ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
@@ -996,8 +1031,115 @@ async function randomCase(){
   }
 }
 
+
+/* ---------------- 时间轴滑块 ---------------- */
+function initTimeSlider(R){
+  const sl = $("#tSlider"), lb = $("#tLabel");
+  if(!sl) return;
+  const n = (R.t_snap_hours || []).length;
+  sl.min = 0; sl.max = Math.max(n - 1, 0); sl.value = Math.max(n - 1, 0); sl.step = 1;
+  lb.textContent = "t = " + (n ? R.t_snap_hours[n-1] : 0) + " h";
+  sl.oninput = () => {
+    const k = +sl.value;
+    lb.textContent = "t = " + (R.t_snap_hours[k] != null ? R.t_snap_hours[k] : 0) + " h";
+    drawFamily(R, k);
+  };
+}
+
+
+/* ---------------- 特征线实验 ---------------- */
+const CHAR_CASES = {
+  sub: {L:1000, b:5, m:0, n:0.015, i0:0.001, Q0:10, amp:0.2},
+  sup: {L:1000, b:4, m:0, n:0.015, i0:0.02,  Q0:10, amp:0.2}
+};
+
+async function runChar(kind){
+  const box = $("#charVerdict");
+  box.textContent = "实验进行中…";
+  try{
+    const p = CHAR_CASES[kind];
+    const r = await postJSON("/api/unsteady/characteristic", p);
+    if(!r.ok){ box.textContent = "实验失败：" + (r.error || "未知"); return; }
+    drawCharChart(r);
+    const bits = [];
+    bits.push("<b>Fr = " + r.Fr + "</b>（" + (r.regime === "subcritical" ? "缓流" : "急流") + "），" +
+              "v = " + r.v + " m/s，c = " + r.c + " m/s，v−c = " + r.c_minus_v + " m/s。");
+    if(r.regime === "subcritical"){
+      bits.push("下游扰动理论上溯用时 " + r.theory_up + " s；实测上游开始响应 " +
+                (r.measured_up == null ? "未检测到（扰动衰减）" : r.measured_up + " s") +
+                (r.err == null ? "。" : "，与理论偏差 " + (r.err*100).toFixed(1) + "%。"));
+      bits.push("结论：<b>缓流时下游扰动可以逆流上溯</b>，这就是回水顶托的力学来源。");
+    }else{
+      bits.push("v−c = " + r.c_minus_v + " m/s &lt; 0：特征线 v−c 也指向下游，<b>下游扰动无法上溯</b>。");
+      bits.push("这说明急流河段里，下游水位变化传不到上游——扩散波做不到这点，全方程可以。");
+    }
+    box.innerHTML = bits.join("<br>");
+  }catch(e){
+    box.textContent = "实验请求失败：" + e.message;
+  }
+}
+
+function drawCharChart(r){
+  const cv = $("#cChar");
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 700, h = 240;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  cv.style.width = "100%"; cv.style.height = h + "px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  const pad = {l:56,r:16,t:14,b:30};
+  const L = r.L, tmax = Math.max(r.t_end || 1, (r.theory_up || 0) * 1.25, 1);
+  const X = t => pad.l + t/tmax * (w-pad.l-pad.r);
+  const Y = x => pad.t + (x/L) * (h-pad.t-pad.b);
+
+  ctx.strokeStyle = "#eef1f5";
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + (h-pad.t-pad.b)*k/4;
+    ctx.beginPath(); ctx.moveTo(pad.l,yy); ctx.lineTo(w-pad.r,yy); ctx.stroke();
+  }
+  ctx.strokeStyle = "#c3ccd5";
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b);
+  ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+  ctx.fillStyle = "#8b98a6"; ctx.font = "11px sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText("时间 t (s)", (pad.l+w-pad.r)/2, h-18);
+  ctx.save(); ctx.translate(14,(pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText("里程 x (m)", 0, 0); ctx.restore();
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText("上游", pad.l+4, pad.t+8);
+  ctx.fillText("下游", pad.l+4, h-pad.b-8);
+
+  if(r.regime === "subcritical" && r.theory_up){
+    ctx.save(); ctx.setLineDash([6,4]); ctx.strokeStyle = "#2e6da4"; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(X(0), Y(L)); ctx.lineTo(X(r.theory_up), Y(0)); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = "#2e6da4"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText("理论 v−c 特征线", X(0)+8, Y(L)-4);
+  }
+  (r.points || []).forEach(p => {
+    if(p.arrival == null) return;
+    ctx.beginPath(); ctx.arc(X(p.arrival), Y(p.x), 3.4, 0, Math.PI*2);
+    ctx.fillStyle = "#b23c4a"; ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.stroke();
+  });
+  if(r.regime === "supercritical"){
+    ctx.fillStyle = "#c9741f"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = "600 12px sans-serif";
+    ctx.fillText("急流：扰动只能被水流带走，无法上溯", pad.l + 90, Y(L*0.35));
+  }
+}
+
+function bindChar(){
+  document.querySelectorAll(".charRow button").forEach(b=>{
+    b.addEventListener("click", ()=>runChar(b.dataset.k));
+  });
+}
+
 bindModeSeg();
 bindChat();
+bindChar();
+runChar("sub");
 bindHover();
 bindPresets();
 document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("click", updateModeVisuals));
