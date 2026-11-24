@@ -54,7 +54,7 @@
 <body>
 <header>
   <b>非恒定流实验</b>
-  <span class="sub">扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项</span>
+  <span class="sub" id="modelSub">扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项</span>
   <a href="/">← 返回恒定流系统</a>
 </header>
 
@@ -63,6 +63,13 @@
     <section class="card">
       <div class="card-h">工况 <span class="tag">矩形/梯形</span></div>
       <div class="card-b">
+        <div class="seg" id="solverSeg" style="margin-bottom:8px;width:100%;">
+          <button data-m="diffusion" class="on" style="flex:1;">扩散波 A（快）</button>
+          <button data-m="preissmann" style="flex:1;">全方程 B1（回水）</button>
+        </div>
+        <div class="note" id="modelNote" style="margin:0 0 10px;">
+          <b>扩散波</b>：忽略惯性项，约 1 秒出结果；不能算回水顶托与急流下游扰动。
+        </div>
         <div class="grid2">
           <div class="field"><label>渠长 L (m)</label><input id="L" type="number" value="10000"></div>
           <div class="field"><label>底宽 b (m)</label><input id="b" type="number" step="0.1" value="5"></div>
@@ -163,12 +170,34 @@
 const $ = s => document.querySelector(s);
 const COL = ["#2e6da4","#c9741f","#2f7d54","#7a3b0e","#7d4b9a","#4b7d9a"];
 let last = null;
+let solver = "diffusion";
+
+function bindSolverSeg(){
+  document.querySelectorAll("#solverSeg button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      solver = btn.dataset.m;
+      document.querySelectorAll("#solverSeg button").forEach(b=>b.classList.toggle("on", b.dataset.m===solver));
+      const note = $("#modelNote");
+      const sub = $("#modelSub");
+      if(sub) sub.textContent = (solver === "preissmann")
+        ? "圣维南全方程 · Preissmann 隐式 · 保留惯性项"
+        : "扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项";
+      if(solver === "preissmann"){
+        note.innerHTML = "<b>全方程（Preissmann 隐式）</b>：保留惯性项、无条件稳定；" +
+          "能算回水顶托与下游扰动上溯，但不支持溃坝/涌潮。约 1 秒出结果。";
+      }else{
+        note.innerHTML = "<b>扩散波</b>：忽略惯性项，约 1 秒出结果；不能算回水顶托与急流下游扰动。";
+      }
+    });
+  });
+}
 
 function setMsg(text, cls){ const m = $("#msg"); m.textContent = text; m.className = "hint" + (cls ? " "+cls : ""); }
 
 async function runCase(){
   const btn = $("#run"); btn.disabled = true; setMsg("计算中…");
   const payload = {
+    model: solver,
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
@@ -383,21 +412,31 @@ function drawLoop(R){
 
 function drawDiag(R){
   const d = R.diagnostics, m = R.meta;
+  const isPre = (R.model === "preissmann") || (m.model === "preissmann");
   $("#dMass").textContent = (d.mass_err*100).toFixed(3) + "%";
-  $("#dC").textContent = d.max_courant.toFixed(3);
+  $("#dC").textContent = (d.max_courant == null) ? "—" : d.max_courant.toFixed(3);
   $("#dDt").textContent = d.dt.toFixed(2) + " s";
   $("#dSteps").textContent = d.steps;
   $("#dBound").textContent = (d.boundary_peak_err*100).toFixed(2) + "%";
   $("#dHdn").textContent = d.h_dn_used.toFixed(3) + (d.h_dn_is_normal ? "（正常水深）" : "（给定）");
   const A0 = m.h_n * (m.b + m.m * m.h_n);
   const v0 = m.Q0 / A0;
-  $("#dMeta").innerHTML =
-    "特征波速三段式：c_k(h₀)=" + d.c_k_h0.toFixed(3) +
-    " m/s（均匀流参考） · c_k(峰值水深)=" + d.c_k_peak.toFixed(3) +
-    " m/s · 实测等效=" + d.c_k_measured.toFixed(3) + " m/s<br>" +
-    "v₀=" + v0.toFixed(3) + " m/s，c_k(h₀)/v₀=" + (d.c_k_h0/v0).toFixed(2) +
-    "（仅宽浅矩形接近 5/3；梯形需数值求 dQ/dh）<br>" +
-    "网格 Δx=" + d.dx + " m，Δt=" + d.dt + " s，库朗按 |v|+c 估计 " + d.max_courant.toFixed(3);
+  if(isPre){
+    $("#dMeta").innerHTML =
+      "<b>求解器：圣维南全方程 · Preissmann 隐式</b>（θ=" + d.theta + "，ψ=" + d.psi + "）<br>" +
+      "Newton 迭代合计 " + d.newton_iters + " 次，失败 " + d.newton_failed + " 次；" +
+      "Δt=" + d.dt + " s（无条件稳定）<br>" +
+      "v₀=" + v0.toFixed(3) + " m/s，实测等效波速 " + d.c_k_measured.toFixed(3) + " m/s";
+  }else{
+    $("#dMeta").innerHTML =
+      "特征波速三段式：c_k(h₀)=" + d.c_k_h0.toFixed(3) +
+      " m/s（均匀流参考） · c_k(峰值水深)=" + (d.c_k_peak == null ? "—" : d.c_k_peak.toFixed(3)) +
+      " m/s · 实测等效=" + d.c_k_measured.toFixed(3) + " m/s<br>" +
+      "v₀=" + v0.toFixed(3) + " m/s，c_k(h₀)/v₀=" + (d.c_k_h0/v0).toFixed(2) +
+      "（仅宽浅矩形接近 5/3；梯形需数值求 dQ/dh）<br>" +
+      "网格 Δx=" + d.dx + " m，Δt=" + d.dt + " s，库朗按 |v|+c 估计 " +
+      (d.max_courant == null ? "—" : d.max_courant.toFixed(3));
+  }
   const tb = $("#peakTable"); tb.innerHTML = "";
   R.stations.forEach(st=>{
     const tr = document.createElement("tr");
@@ -421,6 +460,7 @@ function drawDiag(R){
   }
 }
 
+bindSolverSeg();
 $("#run").addEventListener("click", runCase);
 
 /* 稳态回归：与恒定流内核逐点对比（外部锚点，不是自证） */

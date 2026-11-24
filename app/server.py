@@ -585,16 +585,44 @@ class Handler(SimpleHTTPRequestHandler):
                     except (TypeError, ValueError):
                         return d
 
-                h_dn = body.get("h_dn")
-                res = us.run(
-                    L=num("L", 10000.0), b=num("b", 5.0), m=num("m", 0.0),
-                    n=num("n", 0.015), i0=num("i0", 0.001),
-                    Q0=num("Q0", 10.0), Qpeak=num("Qpeak", 30.0),
-                    t_peak=num("t_peak", 3600.0), t_base=num("t_base", 7200.0),
-                    t_end=num("t_end", 43200.0) or None,
-                    h_dn=(None if h_dn in (None, "", "auto") else float(h_dn)),
-                    Nx=int(num("Nx", 121)),
-                )
+                L = num("L", 10000.0); b = num("b", 5.0); m = num("m", 0.0)
+                n = num("n", 0.015); i0 = num("i0", 0.001)
+                Q0 = num("Q0", 10.0); Qpeak = num("Qpeak", 30.0)
+                tp = num("t_peak", 3600.0); tb = num("t_base", 7200.0)
+                te = num("t_end", 43200.0) or None
+                Nx = int(num("Nx", 121))
+                h_dn_body = body.get("h_dn")
+                h_dn = None if h_dn_body in (None, "", "auto") else float(h_dn_body)
+                model = (body.get("model") or "diffusion").lower()
+
+                if model == "preissmann":
+                    # 全方程：初场取恒定解，避免 t=0 的虚假波
+                    from unsteady import preissmann as up
+                    hn = us.normal_depth(b, m, n, i0, Q0)
+                    hd = hn if h_dn is None else h_dn
+                    h_init = None
+                    try:
+                        slots = {"Q": Q0, "mode": "teaching",
+                                 "reaches": [{"L": L, "i": i0, "b": b, "m": m, "n": n}],
+                                 "downstream": "given_h", "h0": hd, "upstream": "none"}
+                        a0 = adapter.build({"slots": slots, "warnings": [], "normalized": ""})
+                        st = gvf_core.solve(a0["params"])
+                        sg = st.segments[0]
+                        sx = np.asarray(sg.x, float); sh = np.asarray(sg.h, float)
+                        order = np.argsort(sx)
+                        x_uni = np.linspace(0.0, L, Nx)
+                        h_init = np.interp(x_uni, sx[order], sh[order])
+                    except Exception:
+                        h_init = None
+                    res = up.run(
+                        L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
+                        t_peak=tp, t_base=tb, t_end=te, h_dn=hd,
+                        h_init=h_init, Nx=Nx)
+                else:
+                    res = us.run(
+                        L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
+                        t_peak=tp, t_base=tb, t_end=te,
+                        h_dn=h_dn, Nx=Nx)
                 return self._json({"ok": True, "result": res})
             except Exception as e:
                 return self._json({"ok": False,

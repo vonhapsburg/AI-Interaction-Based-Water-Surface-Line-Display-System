@@ -35,6 +35,13 @@
   }
   .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);}
   .dot.off{background:var(--warn);}
+  .cta{
+    display:inline-flex;align-items:center;gap:5px;text-decoration:none;
+    background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;
+    padding:6px 13px;border-radius:99px;box-shadow:0 1px 3px rgba(31,78,121,.28);
+    white-space:nowrap;transition:background .2s;
+  }
+  .cta:hover{background:#2e6da4;}
   .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;}
   .seg button{
     border:0;background:#fff;padding:6px 13px;font-size:12.5px;color:var(--muted);
@@ -287,8 +294,8 @@
     <button data-mode="teaching" class="on">教学模式 α=1.00</button>
     <button data-mode="engineering">工程模式 α=1.05</button>
   </div>
-  <a class="pill" href="/unsteady.html" target="_blank" style="text-decoration:none"
-     title="非恒定流（扩散波）实验 · 独立模块，不影响本页恒定流计算">非恒定流实验 ↗</a>
+  <a class="cta" href="/unsteady.html" target="_blank"
+     title="非恒定流实验：扩散波 / 全方程，独立模块，不影响本页恒定流计算">▸ 非恒定流实验</a>
   <span class="pill" id="aiStatus"><i class="dot off"></i>检测中…</span>
 </header>
 
