@@ -69,6 +69,7 @@ def main():
         check("回水与特征线自动刷新", "autoRefreshSide" in html)
         check("① 图可缩放", "famZoom" in html and 'id="famIn"' in html)
         check("公式速查已扩充", html.count('class="f"') >= 18)
+        check("切换模式会自动重算", "caseRunning" in html and "rerunPending" in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)

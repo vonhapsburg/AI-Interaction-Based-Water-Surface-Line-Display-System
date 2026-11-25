@@ -424,13 +424,19 @@ function bindModeSeg(){
           "用来讲清“一族曲线 / 削峰 / 绳套”。";
         if(sub) sub.textContent = "扩散波（瞬时流态法）· 教材 8.10.3 · 忽略惯性项";
       }
+      // 换的是求解器，图形必须重算，否则显示的仍是上一个模型的解
+      runCase();
     });
   });
 }
 
 function setMsg(text, cls){ const m = $("#msg"); m.textContent = text; m.className = "hint" + (cls ? " "+cls : ""); }
 
+let caseRunning = false, rerunPending = false;
+
 async function runCase(){
+  if(caseRunning){ rerunPending = true; return; }
+  caseRunning = true;
   const btn = $("#run"); btn.disabled = true;
   const label = (currentModel() === "preissmann")
     ? "全方程隐式求解中（Preissmann + Newton）…" : "扩散波显式推进中…";
@@ -459,7 +465,17 @@ async function runCase(){
            (last.ms/1000).toFixed(1) + " s", "ok");
   }catch(e){
     setMsg("请求失败：" + e.message, "err");
-  }finally{ hideBusy(); btn.disabled = false; }
+  }finally{
+    hideBusy();
+    btn.disabled = false;
+    caseRunning = false;
+    // 运行期间又切了模式：跑完立刻用新模型再算一次
+    if(last && last.model && last.model !== currentModel()) rerunPending = true;
+    if(rerunPending){
+      rerunPending = false;
+      setTimeout(()=>{ runCase(); }, 120);
+    }
+  }
 }
 
 function setup(cv, h){
