@@ -966,7 +966,10 @@ async function previewBackwater(){
     "下游 <b>" + r.h_dn.toFixed(3) + " m</b>（正常水深 " + r.h_n.toFixed(3) + " m）→ " +
     "上游 <b>" + r.h_up.toFixed(3) + " m</b>，沿程最大变化 " + (d>=0?"+":"") + d.toFixed(3) + " m；" +
     "回水影响长度约 <b>" + (r.backwater_len/1000).toFixed(2) + " km</b>；型线 " +
-    (r.curve_types||[]).join("→") + "。";
+    (r.curve_types||[]).join("→") + "。" +
+    (mode === "engineering"
+      ? "<br><span style='color:#2f7d54'>工程模式：全方程会把这条回水线“怎么长出来”的过程也算进非恒定解。</span>"
+      : "<br><span style='color:#8b6a1f'>这是<b>恒定回水</b>参考图（两种模式都能看）。教学模式的扩散波能给出稳态回水，但“回水随时间往上游传”的过程需要工程模式。</span>");
   drawBackwater(r);
 }
 
