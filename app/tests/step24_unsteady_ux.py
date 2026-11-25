@@ -64,6 +64,11 @@ def main():
         check("81 帧时间轴", "frames: 81" in html)
         check("① 图只画当前帧", "淡蓝带" in html and "hsSel" in html)
         check("特征线有选中反馈", 'id="charSrc"' in html and 'classList.toggle("on"' in html)
+        check("洪峰沿程在②卡片内", 'peakWrap' in html
+              and html.find('peakTable') > html.find('cHydro'))
+        check("回水与特征线自动刷新", "autoRefreshSide" in html)
+        check("① 图可缩放", "famZoom" in html and 'id="famIn"' in html)
+        check("公式速查已扩充", html.count('class="f"') >= 18)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)

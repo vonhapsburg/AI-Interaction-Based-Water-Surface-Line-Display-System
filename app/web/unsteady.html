@@ -125,6 +125,14 @@
                   background:#f4f7fa;border:1px solid #e7edf3;padding:2px 6px;border-radius:4px;
                   display:inline-block;line-height:1.7;}
   .fmlbox .f span{color:#8b98a6;}
+  .zoomCtl{display:inline-flex;gap:4px;margin-left:10px;}
+  .zoomCtl button{width:auto;margin:0;padding:1px 8px;font-size:12.5px;line-height:1.5;
+                  background:#eef3f8;color:#2f4b66;border-radius:6px;}
+  .zoomCtl button:hover{background:#dfeaf5;}
+  .peakWrap{margin-top:10px;}
+  .peakWrap table{width:100%;border-collapse:collapse;font-size:12px;}
+  .peakWrap th,.peakWrap td{border-bottom:1px solid var(--line2);padding:5px 6px;text-align:right;}
+  .peakWrap th:first-child,.peakWrap td:first-child{text-align:left;}
   @media(max-width:760px){ .fmlbox{grid-template-columns:1fr;} }
   .engTip{background:#f1f9f4;border:1px solid #cfe4d8;color:#2f7d54;border-radius:8px;
           padding:7px 9px;font-size:11.5px;line-height:1.6;margin:0 0 10px;}
@@ -284,21 +292,17 @@ window.addEventListener("unhandledrejection", function(e){
       </div>
     </section>
 
-    <section class="card" style="margin-top:12px;">
-      <div class="card-h">洪峰沿程</div>
-      <div class="card-b">
-        <table>
-          <thead><tr><th>断面 (m)</th><th>峰值 Q</th><th>峰现时刻</th></tr></thead>
-          <tbody id="peakTable"><tr><td colspan="3" style="color:#8b98a6">尚未计算</td></tr></tbody>
-        </table>
-        <div class="note">削峰、展宽、滞后是扩散波相对运动波多出来的两个特征（坦化）。</div>
-      </div>
-    </section>
   </aside>
 
   <main class="right">
     <section class="card">
-      <div class="card-h">① 一条曲线 → 一族曲线 <span class="tag">不同时刻的瞬时水面线（高程 z）</span></div>
+      <div class="card-h">① 一条曲线 → 一族曲线
+        <span class="zoomCtl">
+          <button id="famIn" type="button" title="放大">＋</button>
+          <button id="famOut" type="button" title="缩小">－</button>
+          <button id="famReset" type="button" title="复位">⟲</button>
+        </span>
+        <span class="tag">滚轮或按钮缩放 · 不同时刻的瞬时水面线（高程 z）</span></div>
       <div class="card-b"><div class="plot"><canvas id="cFamily" class="base" height="300"></canvas><canvas id="ovlFamily" class="ovl"></canvas></div>
         <div class="tline">
           <span>时间轴</span>
@@ -313,6 +317,12 @@ window.addEventListener("unhandledrejection", function(e){
       <div class="card-h">② 洪峰变矮、变胖、变慢 <span class="tag">同一张图上的断面流量过程线</span></div>
       <div class="card-b"><div class="plot"><canvas id="cHydro" class="base" height="260"></canvas><canvas id="ovlHydro" class="ovl"></canvas></div>
         <div class="note">峰值沿程下降不是"水少了"，而是同样的水量被摊到更长的时间里。</div>
+        <div class="peakWrap">
+          <table>
+            <thead><tr><th>断面 (m)</th><th>峰值 Q (m³/s)</th><th>峰现时刻 (h)</th></tr></thead>
+            <tbody id="peakTable"><tr><td colspan="3" style="color:#8b98a6">尚未计算</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -361,6 +371,16 @@ window.addEventListener("unhandledrejection", function(e){
         <div class="f"><b>Preissmann 四点隐式</b><code>f ≈ ψf_{i+1} + (1−ψ)f_i；∂f/∂t ≈ [ψΔf_{i+1} + (1−ψ)Δf_i]/Δt</code><br><span>θ 控制时间加权，本页 θ=0.7、ψ=0.5</span></div>
         <div class="f"><b>回水长度</b><code>L_b ≈ (h − h₀) / i₀</code><br><span>界面显示的是「抬升降到 5% 抬升量」处的实际长度</span></div>
         <div class="f"><b>坦化与绳套</b><code>∂h/∂t ≠ 0 ⇒ 附加比降 ≠ 0 ⇒ h(Q) 多值</code><br><span>涨水段同一 Q 下 h 偏低，落水段偏高，于是成环</span></div>
+        <div class="f"><b>断面比能</b><code>E_s = h + αv²/(2g)</code><br><span>临界流时 E_s 取极小值</span></div>
+        <div class="f"><b>弗劳德数</b><code>Fr = v / √(gA/B)</code><br><span>Fr&lt;1 缓流、Fr=1 临界、Fr&gt;1 急流</span></div>
+        <div class="f"><b>临界水深条件</b><code>Q²B/(gA³) = 1</code><br><span>矩形渠：h_c = (Q²/(gb²))^(1/3)</span></div>
+        <div class="f"><b>水跃共轭（矩形）</b><code>h₂/h₁ = ½(√(1+8Fr₁²) − 1)</code><br><span>动量方程给出，不靠能量方程</span></div>
+        <div class="f"><b>消能系数</b><code>K_j = ΔE/E₁ = (h₂−h₁)³/(4h₁h₂E₁)</code><br><span>矩形渠的解析式</span></div>
+        <div class="f"><b>曼宁流量</b><code>Q = (1/n)·A·R^(2/3)·i^(1/2)</code><br><span>恒定均匀流的基本关系</span></div>
+        <div class="f"><b>扩散波衰减系数</b><code>D = Q/(2B i₀)</code><br><span>D 越大，洪峰坦化越强</span></div>
+        <div class="f"><b>马斯京根对照</b><code>K ≈ L/c_k，X ≈ ½ − D/(c_k L)</code><br><span>水文学两参数与本文 c_k、D 的对应</span></div>
+        <div class="f"><b>特征线方程</b><code>dx/dt = v ± c</code><br><span>C₊ 与 C₋ 两支，决定扰动传播方向</span></div>
+        <div class="f"><b>质量守恒（离散）</b><code>ΣΔV = ∫Q_in dt − ∫Q_out dt</code><br><span>诊断栏的“格式校验”就是这条式子</span></div>
       </div>
     </section>
   </main>
@@ -433,6 +453,7 @@ async function runCase(){
     last = r.result;
     last.ms = performance.now() - t0;
     drawAll(last);
+    autoRefreshSide();   // 自动刷新“回水预览”和“特征线”
     setMsg("完成：质量误差 " + (last.diagnostics.mass_err * 100).toFixed(3) +
            "%，库朗 " + last.diagnostics.max_courant + "，用时 " +
            (last.ms/1000).toFixed(1) + " s", "ok");
@@ -466,6 +487,8 @@ function drawAll(R){
 }
 
 /* ① 一族曲线：高程 z = z_b + h，渠底 z_b = -i0 x */
+let familyView = null;   // {x0,x1}，null 表示全渠
+
 function drawFamily(R, sel){
   const selK = (sel == null) ? Math.max((R.h_snap || []).length - 1, 0) : sel;
   familySel = selK;
@@ -474,13 +497,23 @@ function drawFamily(R, sel){
   const x = R.x, snaps = R.h_snap, hours = R.t_snap_hours;
   const i0 = R.meta.i0;
   const bed = x.map(v => -i0 * v);
+
+  const xa = familyView ? Math.max(familyView.x0, x[0]) : x[0];
+  const xb = familyView ? Math.min(familyView.x1, x[x.length - 1]) : x[x.length - 1];
+  const inView = v => (v >= xa - 1e-9 && v <= xb + 1e-9);
+
   let ymin = Infinity, ymax = -Infinity;
-  bed.forEach(v => { ymin = Math.min(ymin, v); ymax = Math.max(ymax, v); });
+  bed.forEach((v, i) => { if(inView(x[i])){ ymin = Math.min(ymin, v); ymax = Math.max(ymax, v); } });
   snaps.forEach(hs => {
-    hs.forEach((v,i) => { const z = bed[i] + v; ymax = Math.max(ymax, z); ymin = Math.min(ymin, z); });
+    hs.forEach((v, i) => {
+      if(!inView(x[i])) return;
+      const z = bed[i] + v;
+      ymax = Math.max(ymax, z); ymin = Math.min(ymin, z);
+    });
   });
+  if(!isFinite(ymin) || !isFinite(ymax)){ ymin = 0; ymax = 1; }
   const span = Math.max(ymax - ymin, 0.5);
-  const X = v => pad.l + (v - x[0]) / (x[x.length-1] - x[0] || 1) * (w - pad.l - pad.r);
+  const X = v => pad.l + (v - xa) / ((xb - xa) || 1) * (w - pad.l - pad.r);
   const Y = v => h - pad.b - (v - (ymin - span*0.05)) / (span*1.15) * (h - pad.t - pad.b);
 
   // 网格
@@ -489,48 +522,69 @@ function drawFamily(R, sel){
     const yy = pad.t + (h-pad.t-pad.b) * k/4;
     ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w-pad.r, yy); ctx.stroke();
   }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.l, pad.t - 2, w - pad.l - pad.r, h - pad.t - pad.b + 4);
+  ctx.clip();
+
   // 渠底
-  ctx.beginPath(); x.forEach((v,i)=> i?ctx.lineTo(X(v),Y(bed[i])):ctx.moveTo(X(v),Y(bed[i])));
+  ctx.beginPath();
+  x.forEach((v,i)=>{ if(!inView(v)) return; i?ctx.lineTo(X(v),Y(bed[i])):ctx.moveTo(X(v),Y(bed[i])); });
   ctx.strokeStyle = "#6b7a88"; ctx.lineWidth = 2; ctx.stroke();
-  // 正常水深线（N-N）
+
+  // N-N 线
   const hn = R.meta.h_n;
   ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle = "#7d8b99"; ctx.lineWidth = 1.4;
-  ctx.beginPath(); ctx.moveTo(X(x[0]), Y(bed[0]+hn)); ctx.lineTo(X(x[x.length-1]), Y(bed[x.length-1]+hn));
+  ctx.beginPath(); ctx.moveTo(X(xa), Y(-i0*xa + hn)); ctx.lineTo(X(xb), Y(-i0*xb + hn));
   ctx.stroke(); ctx.restore();
   ctx.fillStyle = "#5b6b7b"; ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText("N-N", X(x[0])+6, Y(bed[0]+hn)-6);
-  // 包络带：所有时刻的最高/最低水面，回水隆起在这里最直观
+  ctx.fillText("N-N", X(xa)+6, Y(-i0*xa+hn)-6);
+
+  // 包络带
   if(snaps.length > 1){
     const envHi = x.map((_,i)=> Math.max.apply(null, snaps.map(hs=>bed[i]+hs[i])));
     const envLo = x.map((_,i)=> Math.min.apply(null, snaps.map(hs=>bed[i]+hs[i])));
     ctx.beginPath();
-    x.forEach((v,i)=> i?ctx.lineTo(X(v),Y(envHi[i])):ctx.moveTo(X(v),Y(envHi[i])));
-    for(let i=x.length-1;i>=0;i--) ctx.lineTo(X(x[i]),Y(envLo[i]));
+    let first = true;
+    x.forEach((v,i)=>{ if(!inView(v)) return;
+      first ? ctx.moveTo(X(v), Y(envHi[i])) : ctx.lineTo(X(v), Y(envHi[i])); first = false; });
+    for(let i=x.length-1;i>=0;i--){ if(inView(x[i])) ctx.lineTo(X(x[i]), Y(envLo[i])); }
     ctx.closePath();
     ctx.fillStyle = "rgba(46,109,164,0.10)"; ctx.fill();
   }
 
-  // 只画当前时刻那一帧（其余帧用淡蓝包络带表示范围，避免一堆线盖住真值）
+  // 当前帧
   const hsSel = snaps[selK];
   ctx.beginPath();
-  x.forEach((v,i)=>{ const z = bed[i] + hsSel[i]; i?ctx.lineTo(X(v),Y(z)):ctx.moveTo(X(v),Y(z)); });
+  let started = false;
+  x.forEach((v,i)=>{ if(!inView(v)) return;
+    const z = bed[i] + hsSel[i];
+    started ? ctx.lineTo(X(v),Y(z)) : ctx.moveTo(X(v),Y(z)); started = true; });
   ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 3.2;
   ctx.lineJoin = "round"; ctx.stroke();
+  ctx.restore();
+
+  // 标签与坐标轴
   const xi = Math.floor(x.length*0.62);
   ctx.fillStyle = "#b23c4a"; ctx.font = "600 11.5px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText("t=" + hours[selK] + "h（当前）", X(x[xi]), Y(bed[xi]+hsSel[xi]) - 6);
+  ctx.fillText("t=" + hours[selK] + "h（当前）", Math.min(X(x[xi])+6, w-pad.r-90),
+               Y(bed[xi]+hsSel[xi]) - 6);
   ctx.fillStyle = "rgba(46,109,164,.85)"; ctx.font = "10.5px sans-serif";
   ctx.textAlign = "right";
-  ctx.fillText("淡蓝带 = 全部 " + snaps.length + " 帧的范围", w - pad.r - 4, pad.t + 12);
-  // 坐标轴
+  ctx.fillText("淡蓝带 = 全部 " + snaps.length + " 帧的范围　|　" +
+               (familyView ? "已放大：" + Math.round(xa) + "–" + Math.round(xb) + " m" : "全渠"),
+               w - pad.r - 4, pad.t + 12);
+
   ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h-pad.b); ctx.lineTo(w-pad.r, h-pad.b); ctx.stroke();
   ctx.fillStyle = "#8b98a6"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
   ctx.fillText("里程 s (m)", (pad.l+w-pad.r)/2, h-8);
   ctx.save(); ctx.translate(14, (pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
   ctx.fillText("高程 z (m)", 0, 0); ctx.restore();
+
   const curK = Math.min(Math.max(familySel, 0), snaps.length - 1);
-  registerHover("cFamily", {pad, w, h, x0:x[0], x1:x[x.length-1],
+  registerHover("cFamily", {pad, w, h, x0:xa, x1:xb,
     y0: ymin - span*0.05, y1: ymin - span*0.05 + span*1.15, xs:x,
     series: [{name:"当前时刻", color:"#b23c4a",
               ys: snaps[curK].map((v,i)=>bed[i]+v)}],
@@ -541,6 +595,44 @@ function drawFamily(R, sel){
              "当前 t=" + hours[curK] + "h : z = " + zs[curK].toFixed(3) + " m\n" +
              "该断面 z 范围 " + lo.toFixed(3) + " ~ " + hi.toFixed(3) + " m";
     }});
+}
+
+/* ---- ① 图缩放 ---- */
+function famZoom(factor, centerFrac){
+  if(!last) return;
+  const xs = last.x, lo = xs[0], hi = xs[xs.length - 1];
+  const cur = familyView || {x0: lo, x1: hi};
+  const span = cur.x1 - cur.x0;
+  const c = cur.x0 + span * (centerFrac == null ? 0.5 : centerFrac);
+  let ns = span * factor;
+  ns = Math.max((hi - lo) * 0.02, Math.min(hi - lo, ns));
+  let x0 = c - ns/2, x1 = c + ns/2;
+  if(x0 < lo){ x1 += lo - x0; x0 = lo; }
+  if(x1 > hi){ x0 -= x1 - hi; x1 = hi; }
+  familyView = {x0: Math.max(lo, x0), x1: Math.min(hi, x1)};
+  drawFamily(last, familySel);
+}
+function famReset(){ familyView = null; if(last) drawFamily(last, familySel); }
+
+function bindFamilyZoom(){
+  const cv = document.getElementById("cFamily");
+  if(cv && !cv.dataset.zoomBound){
+    cv.dataset.zoomBound = "1";
+    cv.addEventListener("wheel", e=>{
+      if(!last) return;
+      e.preventDefault();
+      const rect = cv.getBoundingClientRect();
+      const padL = 56, padR = 16;
+      const frac = Math.max(0, Math.min(1, (e.clientX - rect.left - padL) / (rect.width - padL - padR)));
+      famZoom(e.deltaY > 0 ? 1.2 : 1/1.2, frac);
+    }, {passive: false});
+  }
+  const zin = document.getElementById("famIn");
+  const zout = document.getElementById("famOut");
+  const zr = document.getElementById("famReset");
+  if(zin && !zin.dataset.b){ zin.dataset.b = "1"; zin.addEventListener("click", ()=>famZoom(1/1.25, 0.5)); }
+  if(zout && !zout.dataset.b){ zout.dataset.b = "1"; zout.addEventListener("click", ()=>famZoom(1.25, 0.5)); }
+  if(zr && !zr.dataset.b){ zr.dataset.b = "1"; zr.addEventListener("click", famReset); }
 }
 
 /* ② 断面流量过程线 */
@@ -954,7 +1046,21 @@ async function refreshHnHint(){
   }
 }
 
-function scheduleHint(){ clearTimeout(hintTimer); hintTimer = setTimeout(refreshHnHint, 450); }
+function scheduleHint(){
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(refreshHnHint, 450);
+  scheduleAutoRefresh();
+}
+
+let autoTimer = null;
+function scheduleAutoRefresh(){
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(()=>{ autoRefreshSide(); }, 1200);
+}
+function autoRefreshSide(){
+  try{ previewBackwater(); }catch(e){}
+  try{ runChar("cur"); }catch(e){}
+}
 
 async function previewBackwater(){
   const r = await fetchBackwater();
@@ -1159,7 +1265,10 @@ const CHAR_CASES = {
   sup: {L:1000, b:4, m:0, n:0.015, i0:0.02,  Q0:10, amp:0.2}
 };
 
+let charBusy = false;
 async function runChar(kind){
+  if(charBusy) return;
+  charBusy = true;
   const box = $("#charVerdict");
   box.textContent = "实验进行中…";
   document.querySelectorAll(".charRow button").forEach(b=>{
@@ -1199,6 +1308,8 @@ async function runChar(kind){
     box.innerHTML = bits.join("<br>");
   }catch(e){
     box.textContent = "实验请求失败：" + e.message;
+  }finally{
+    charBusy = false;
   }
 }
 
@@ -1270,6 +1381,7 @@ document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("clic
 if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
 if($("#randBtn")) $("#randBtn").addEventListener("click", randomCase);
+bindFamilyZoom();
 if($("#precise")) $("#precise").addEventListener("change", e=>{
   const pill = $("#precisePill");
   if(pill) pill.classList.toggle("active", !!e.target.checked);
