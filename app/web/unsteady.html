@@ -440,8 +440,15 @@ function setup(cv, h){
 }
 
 function drawAll(R){
-  drawFamily(R, Math.max((R.h_snap || []).length - 1, 0)); drawHydro(R); drawLoop(R); drawDiag(R);
-  initTimeSlider(R);
+  // 每张图独立兜底：一张画错不影响其它图
+  const safe = (name, fn) => {
+    try{ fn(); }catch(e){ console.error("[chart]", name, e); }
+  };
+  safe("family", () => drawFamily(R, Math.max((R.h_snap || []).length - 1, 0)));
+  safe("hydro", () => drawHydro(R));
+  safe("loop", () => drawLoop(R));
+  safe("diag", () => drawDiag(R));
+  safe("slider", () => initTimeSlider(R));
 }
 
 /* ① 一族曲线：高程 z = z_b + h，渠底 z_b = -i0 x */
@@ -486,7 +493,7 @@ function drawFamily(R, sel){
     x.forEach((v,i)=> i?ctx.lineTo(X(v),Y(envHi[i])):ctx.moveTo(X(v),Y(envHi[i])));
     for(let i=x.length-1;i>=0;i--) ctx.lineTo(X(x[i]),Y(envLo[i]));
     ctx.closePath();
-    ctx.fillStyle = rgba(46,109,164,0.10); ctx.fill();
+    ctx.fillStyle = "rgba(46,109,164,0.10)"; ctx.fill();
   }
 
   // 各时刻水面线
