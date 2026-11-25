@@ -343,6 +343,7 @@ window.addEventListener("unhandledrejection", function(e){
             <thead><tr><th>断面 (m)</th><th>峰值 Q (m³/s)</th><th>峰现时刻 (h)</th></tr></thead>
             <tbody id="peakTable"><tr><td colspan="3" style="color:#8b98a6">尚未计算</td></tr></tbody>
           </table>
+          <div class="note" id="peakNote" style="margin-top:6px;">削峰、展宽、滞后是扩散波相对运动波多出来的两个特征（坦化）。</div>
         </div>
       </div>
     </section>
@@ -501,6 +502,7 @@ async function runCase(){
     if(!r.ok){ setMsg("计算失败：" + (r.error || "未知原因"), "err"); return; }
     last = r.result;
     last.ms = performance.now() - t0;
+    if(gate && last.gate){ last.gate._tc = gate.t_close; last.gate._tr = gate.t_ramp; }
     drawAll(last);
     autoRefreshSide();   // 自动刷新“回水预览”和“特征线”
     setMsg("完成：质量误差 " + (last.diagnostics.mass_err * 100).toFixed(3) +
@@ -886,6 +888,12 @@ function drawDiag(R){
     $("#dMeta").innerHTML += "<br><b style='color:#b06a1f'>已自动加粗网格以控制耗时（nx=" + d.nx + "）；需要精确数值请勾选「精度优先」。</b>";
   }
   const tb = $("#peakTable"); tb.innerHTML = "";
+  const pn = $("#peakNote");
+  if(pn){
+    pn.textContent = (R.gate && R.gate.on)
+      ? "含闸门：闸门断面的“峰现时刻”是关闸把流量掐住的时刻，不是洪峰到达时刻；下游峰值才是被削后的洪峰。"
+      : "削峰、展宽、滞后是扩散波相对运动波多出来的两个特征（坦化）。";
+  }
   R.stations.forEach(st=>{
     const tr = document.createElement("tr");
     tr.innerHTML = "<td>" + Math.round(st.x) + "</td><td>" + st.peak_Q.toFixed(2) +
@@ -904,7 +912,8 @@ function drawDiag(R){
     $("#loopNote").innerHTML = "同一流量 Q≈" + qRef.toFixed(1) + " m³/s 时：涨水段 h=" +
       hs[iRise].toFixed(3) + " m，落水段 h=" + hs[iFall].toFixed(3) + " m" +
       (hs[iRise] < hs[iFall] ? "（涨水更低，环为逆时针）" : "（涨水更高，环为顺时针）") +
-      "；虚线是恒定单值关系，非恒定时它变成绳套。";
+      "；虚线是恒定单值关系，非恒定时它变成绳套。" +
+    ((R.gate && R.gate.on) ? " 环上的折返分支是关闸造成，不是数值错误。" : "");
   }
 }
 
@@ -1066,9 +1075,9 @@ const PRESETS = {
   backwater: {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:1.75},
   drawdown:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:0.85},
   pre_release:{mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
-               gate:{s:50,b:5,z:0,mu:0.62,a0:1.2,a1:0.8,tc:0.5,tr:0.5}},
-  gate_cut:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
-               gate:{s:50,b:5,z:0,mu:0.62,a0:1.0,a1:0.45,tc:0.8,tr:0.5}}
+               Nx:81, gate:{s:50,b:5,z:0,mu:0.62,a0:1.2,a1:0.9,tc:0.5,tr:0.5}},
+  gate_cut:  {mode:"engineering", L:2000, b:6, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
+               Nx:81, gate:{s:50,b:6,z:0,mu:0.62,a0:1.0,a1:0.6,tc:0.8,tr:0.5}}
 };
 
 function applyPreset(key){
@@ -1081,6 +1090,7 @@ function applyPreset(key){
   set("#L",p.L); set("#b",p.b); set("#m",p.m); set("#n",p.n); set("#i0",p.i0);
   set("#Q0",p.Q0); set("#Qpeak",p.Qpeak); set("#tp",p.tp); set("#tb",p.tb); set("#te",p.te);
   set("#hdn",p.hdn);
+  if(p.Nx) set("#Nx",p.Nx);
   const g = p.gate || null;
   const gon = $("#gateOn");
   if(gon){ gon.checked = !!g; }
@@ -1409,11 +1419,11 @@ function drawGate(R){
   if(!card) return;
   if(!g || !g.on){ card.style.display = "none"; return; }
   card.style.display = "";
-  const {ctx, w, h} = setup($("#cGate"), 260);
-  const pad = {l:54, r:54, t:18, b:32};
+  const {ctx, w, h} = setup($("#cGate"), 280);
+  const pad = {l:68, r:74, t:40, b:48};
   const t = g.t, Q = g.Q, hu = g.hu, hd = g.hd, a = g.a;
   const tmax = Math.max.apply(null, t.concat([1]));
-  const qmax = Math.max.apply(null, Q.concat([1])) * 1.15;
+  const qmax = Math.max.apply(null, Q.concat([1])) * 1.12;
   const hmax = Math.max.apply(null, hu.concat(hd).concat([0.1])) * 1.12;
   const amax = Math.max.apply(null, a.concat([0.1])) * 1.15;
   const X = v => pad.l + (v / tmax) * (w - pad.l - pad.r);
@@ -1421,36 +1431,94 @@ function drawGate(R){
   const YH = v => h - pad.b - (v / hmax) * (h - pad.t - pad.b);
   const YA = v => h - pad.b - (v / amax) * (h - pad.t - pad.b);
 
-  ctx.strokeStyle = "#eef1f5";
+  ctx.font = "10px sans-serif";
   for(let k = 0; k <= 4; k++){
     const yy = pad.t + (h - pad.t - pad.b) * k / 4;
+    ctx.strokeStyle = "#eef1f5";
     ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillStyle = "#8b98a6";
+    ctx.textAlign = "right";
+    ctx.fillText((qmax * (4 - k) / 4).toFixed(1), pad.l - 6, yy + 3);
+    ctx.textAlign = "left";
+    ctx.fillText((hmax * (4 - k) / 4).toFixed(1), w - pad.r + 6, yy + 3);
   }
-  const line = (ys, yFn, color, width) => {
+  for(let k = 0; k <= 4; k++){
+    const xx = X(tmax * k / 4);
+    ctx.strokeStyle = "#f1f4f8";
+    ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, h - pad.b); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.textAlign = "center";
+    ctx.fillText((tmax * k / 4 / 3600).toFixed(1), xx, h - pad.b + 15);
+  }
+
+  // 关闸时段底纹
+  if(g._tc != null){
+    const x1 = X(Math.max(0, Math.min(g._tc, tmax)));
+    const x2 = X(Math.max(0, Math.min(g._tc + (g._tr || 0), tmax)));
+    if(x2 > x1){
+      ctx.fillStyle = "rgba(176,106,31,.08)";
+      ctx.fillRect(x1, pad.t, x2 - x1, h - pad.t - pad.b);
+      ctx.fillStyle = "#b06a1f"; ctx.textAlign = "center";
+      ctx.fillText("关闸", (x1 + x2) / 2, pad.t - 8);
+    }
+  }
+
+  const line = (ys, yFn, color, width, dash) => {
+    ctx.save();
+    if(dash) ctx.setLineDash(dash);
     ctx.beginPath();
     t.forEach((tv, i) => { i ? ctx.lineTo(X(tv), yFn(ys[i])) : ctx.moveTo(X(tv), yFn(ys[i])); });
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+    ctx.restore();
   };
   line(Q, YQ, "#2e6da4", 2.2);
   line(hu, YH, "#b23c4a", 2.0);
   line(hd, YH, "#2f7d54", 1.8);
-  ctx.save(); ctx.setLineDash([5, 3]); line(a, YA, "#8b98a6", 1.4); ctx.restore();
+  line(a, YA, "#8b98a6", 1.4, [5, 3]);
+
+  // 峰值点注记
+  const iQ = Q.indexOf(Math.max.apply(null, Q));
+  const iH = hu.indexOf(Math.max.apply(null, hu));
+  const mark = (i, yFn, val, color, txt) => {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(X(t[i]), yFn(val), 3.2, 0, 2 * Math.PI); ctx.fill();
+    ctx.font = "600 10.5px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(txt, Math.min(X(t[i]) + 6, w - pad.r - 96), yFn(val) - 6);
+  };
+  mark(iQ, YQ, Q[iQ], "#2e6da4", "最大过闸 Q=" + Q[iQ].toFixed(2));
+  mark(iH, YH, hu[iH], "#b23c4a", "最高闸上 " + hu[iH].toFixed(2) + " m");
 
   ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b); ctx.stroke();
-  ctx.fillStyle = "#8b98a6"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 8);
-  ctx.textAlign = "left";
-  ctx.fillText("Q (m³/s)", 4, pad.t + 10);
-  ctx.textAlign = "right";
-  ctx.fillText("水位 (m)", w - 4, pad.t + 10);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.moveTo(w - pad.r, pad.t); ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.stroke();
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif";
+  ctx.textAlign = "left"; ctx.fillText("流量 Q (m³/s)", 4, pad.t - 18);
+  ctx.textAlign = "right"; ctx.fillText("水位 / 开度 (m)", w - 4, pad.t - 18);
+  ctx.textAlign = "center"; ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 10);
 
-  const iEnd = Q.length - 1;
+  // 图例
+  ctx.font = "10.5px sans-serif";
+  const legend = [["#2e6da4", false, "过闸流量"], ["#b23c4a", false, "闸上水位"],
+                  ["#2f7d54", false, "闸下水位"], ["#8b98a6", true, "开度"]];
+  let lx = pad.l + 4;
+  const ly = pad.t + 14;
+  legend.forEach(([c, dash, label]) => {
+    ctx.save();
+    if(dash) ctx.setLineDash([4, 2]);
+    ctx.strokeStyle = c; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lx, ly - 4); ctx.lineTo(lx + 16, ly - 4); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = "#41556b"; ctx.textAlign = "left";
+    ctx.fillText(label, lx + 20, ly);
+    lx += 20 + ctx.measureText(label).width + 14;
+  });
+
   const note = $("#gateNote");
   if(note){
     note.innerHTML = "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
-      "；开度 " + g.a[0].toFixed(2) + " → " + g.a[iEnd].toFixed(2) + " m；" +
-      "最终过闸 Q=" + Q[iEnd].toFixed(2) + " m³/s，闸上最高水位 " +
+      "；开度 " + g.a[0].toFixed(2) + " → " + g.a[g.a.length-1].toFixed(2) + " m；" +
+      "最终过闸 Q=" + Q[Q.length-1].toFixed(2) + " m³/s，闸上最高水位 " +
       Math.max.apply(null, hu).toFixed(2) + " m。";
   }
 }
