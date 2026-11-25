@@ -61,7 +61,7 @@ def main():
         check("① 图悬停只显示当前帧", "该断面 z 范围" in html and "familySel" in html)
         check("① 图不再逐帧罗列", 'snaps.map((hs,k)=> "t="' not in html)
         check("精度开关在顶部", 'class="precisePill"' in html and html.find('precisePill') < html.find('class="wrap"'))
-        check("81 帧时间轴", "frames: 81" in html)
+        check("121 帧时间轴", "frames: 121" in html)
         check("① 图只画当前帧", "淡蓝带" in html and "hsSel" in html)
         check("特征线有选中反馈", 'id="charSrc"' in html and 'classList.toggle("on"' in html)
         check("洪峰沿程在②卡片内", 'peakWrap' in html
@@ -76,6 +76,7 @@ def main():
         check("闸门图有悬停读数", 'id="ovlGate"' in html and 'registerHover("cGate"' in html)
         check("闸门图有图例与刻度", "最高闸上" in html and "水位 / 开度 (m)" in html)
         check("两个随机按钮", 'id="randBtn"' in html and 'id="randGateBtn"' in html)
+        check("猜你想问点击可触发随机", 't.includes("随机闸门")' in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)

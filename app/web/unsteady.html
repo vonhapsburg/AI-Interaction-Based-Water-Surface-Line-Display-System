@@ -493,7 +493,7 @@ async function runCase(){
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
     t_end: (+$("#te").value) * 3600, Nx: +$("#Nx").value,
-    dense: true, frames: 81,
+    dense: true, frames: 121,
     precision: !!($("#precise") && $("#precise").checked),
     h_dn: $("#hdn").value.trim() === "auto" ? null : +$("#hdn").value
   };
@@ -954,7 +954,11 @@ async function refreshChips(text){
       r.chips.slice(0, 3).forEach(t=>{
         const b = document.createElement("button");
         b.className = "chip"; b.type = "button"; b.textContent = t;
-        b.addEventListener("click", ()=>{ $("#chatInput").value = t; sendChat(); });
+        b.addEventListener("click", ()=>{
+          if(t.includes("随机闸门")){ randomCase(true); return; }
+          if(t.includes("随机算例")){ randomCase(false); return; }
+          $("#chatInput").value = t; sendChat();
+        });
         box.appendChild(b);
       });
       chipIdx = 0;
@@ -1035,6 +1039,10 @@ async function sendChat(){
       }else{
         wait.textContent = "出题失败：" + (r.error || "模型未返回题目");
       }
+    }else if(r.act === "random"){
+      wait.textContent = "正在生成随机" + (r.gate ? "闸门" : "") + "算例…";
+      refreshChips(text);
+      await randomCase(!!r.gate);
     }else{
       renderReply(wait, r.reply || "（没有回答）");
       refreshChips(text);

@@ -70,6 +70,14 @@ def main():
             check("随机闸门 Newton 无失败", d["newton_failed"] == 0)
             check("结果里带闸门过程", bool(res["result"]["gate"]["on"]))
 
+    # 2b) 猜你想问轮换里应有随机入口
+    seen = set()
+    for _ in range(5):
+        c = post("/api/unsteady/chips", {"text": "", "params": {}, "summary": ""})
+        seen.update(c.get("chips") or [])
+    check("猜你想问含随机闸门入口", any("随机闸门" in x for x in seen), list(seen)[:4])
+    check("猜你想问含随机算例入口", any("随机算例" in x for x in seen))
+
     # 3) 普通随机不带闸门
     plain = [post("/api/unsteady/random", {}) for _ in range(3)]
     check("普通随机不含闸门",

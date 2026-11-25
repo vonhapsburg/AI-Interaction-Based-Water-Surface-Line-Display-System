@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate6"
+BUILD_ID = "2026-11-26-gate7"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -622,7 +622,7 @@ class Handler(SimpleHTTPRequestHandler):
                 snap_hours = None
                 if body.get("dense"):
                     nf = int(num("frames", 41))
-                    nf = max(9, min(nf, 81))
+                    nf = max(9, min(nf, 121))
                     span_h = (te or 43200.0) / 3600.0
                     snap_hours = [span_h * i / (nf - 1) for i in range(nf)]
 
@@ -997,6 +997,11 @@ class Handler(SimpleHTTPRequestHandler):
                 from unsteady import chat as uchat
                 params = body.get("params") or {}
                 summary = body.get("summary") or ""
+                # 随机算例/随机闸门：不经过模型，直接交给前端生成
+                if re.search(r"随机闸门", text):
+                    return self._json({"act": "random", "gate": True})
+                if re.search(r"随机算例", text):
+                    return self._json({"act": "random", "gate": False})
                 # “换一批/再来几道”直接判为出题，避免模型分类不稳定
                 if re.search(r"换一批|再来几|再出几|不满意|太简单|太难|换几道", text):
                     ex = {"act": "quiz", "more": True}

@@ -1878,7 +1878,9 @@ const BASE_CHIPS = [
   "为什么缓坡上会出现 M2？",
   "多段渠道之间怎么衔接？",
   "糙率取大了会怎样？",
-  "这个系统不适合算什么？"
+  "这个系统不适合算什么？",
+  "请给我随机生成一份坡折水跌样例",
+  "请给我随机生成一份水跃样例"
 ];
 
 let _genPtr = 0;
@@ -1922,7 +1924,15 @@ function renderChips(){
   if(cx) cx.onclick = ()=>{ const xi = $("#xInput"); if(xi){ xi.focus(); xi.select(); } };
   holder.querySelectorAll(".chip").forEach(el=>{
     if(el.id === "chipDemo" || el.id === "chipX") return;
-    el.onclick = ()=>{ $("#chatInput").value = el.textContent; send(); };
+    el.onclick = ()=>{
+      const txt = el.textContent;
+      if(txt.includes("随机生成")){
+        const kind = txt.includes("坡折") ? "drop" : "jump";
+        const t = document.querySelector('.pchip.gen[data-gen="' + kind + '"]');
+        if(t){ t.click(); return; }
+      }
+      $("#chatInput").value = txt; send();
+    };
   });
 }
 
