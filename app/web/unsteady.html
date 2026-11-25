@@ -145,6 +145,9 @@
   .charRow button{flex:1;margin:0;padding:7px 0;font-size:12.5px;}
   .charRow button[data-k="sub"]{background:#2e6da4;}
   .charRow button[data-k="sup"]{background:#c9741f;}
+  .charRow button.on{outline:3px solid rgba(46,109,164,.35);outline-offset:1px;}
+  .charRow button[data-k="sup"].on{outline-color:rgba(201,116,31,.35);}
+  .charSrc{font-size:11.5px;color:#5b6b7b;margin:0 0 6px;}
   #charVerdict{font-size:12px;line-height:1.7;color:#41556b;}
   #charVerdict b{color:#2e6da4;}
   .msg .hl{color:#c0392b;font-weight:700;}
@@ -152,9 +155,12 @@
              border-left:3px solid #b23c4a;color:#8a2b34;border-radius:4px;}
   .msg .qtype{display:inline-block;font-size:10.5px;color:#2e6da4;background:#e9f1f9;
               border-radius:99px;padding:0 6px;margin-right:4px;}
-  .preciseRow{display:flex;align-items:center;gap:6px;font-size:12px;color:#5b6b7b;
-               margin:8px 0 2px;}
-  .preciseRow input{width:auto;margin:0;}
+  .precisePill{display:inline-flex;align-items:center;gap:6px;border:1px solid #cfe4d8;
+               background:#f4fbf7;color:#2f7d54;border-radius:99px;padding:7px 13px;
+               font-size:12.5px;cursor:pointer;user-select:none;}
+  .precisePill input{width:auto;margin:0;}
+  .precisePill.active{background:#2f7d54;color:#fff;border-color:#2f7d54;}
+  .precisePill.active input{accent-color:#fff;}
 </style>
 </head>
 <body>
@@ -191,6 +197,9 @@ window.addEventListener("unhandledrejection", function(e){
       <button data-mode="teaching" class="on">教学模式 · 扩散波</button>
       <button data-mode="engineering">工程模式 · 全方程</button>
     </div>
+    <label class="precisePill" id="precisePill" title="勾选后不自动加粗网格，数值更准但慢 3–7 倍">
+      <input type="checkbox" id="precise"> 精度优先（更慢更准）
+    </label>
   </div>
   <div class="engTip" id="engTip" style="display:none;max-width:880px;margin:10px auto 0;text-align:left;"><b>工程模式：支持回水顶托。</b>改下游水位后，上游水深会按 c−v 向上游传播；点下面的「预览回水」可以立刻看到沿程水面线。</div>
 </div>
@@ -240,9 +249,6 @@ window.addEventListener("unhandledrejection", function(e){
           <div class="field"><label>下游水位 (m)</label><input id="hdn" type="text" value="auto" title="auto = 正常水深"><div class="hintline" id="hnHint">auto = 正在取正常水深…</div></div>
           <div class="field"><label>网格数 Nx</label><input id="Nx" type="number" step="10" value="121"></div>
         </div>
-        <label class="preciseRow">
-          <input type="checkbox" id="precise"> 精度优先（网格更细、更慢；默认自动加速）
-        </label>
         <button id="run">计算</button>
         <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>
         <div class="bwbox" id="bwBox" style="display:none;"><div class="t" id="bwText"></div><canvas id="cBw"></canvas></div>
@@ -320,6 +326,7 @@ window.addEventListener("unhandledrejection", function(e){
     <section class="card">
       <div class="card-h">④ 特征线：扰动能不能往上游跑 <span class="tag">v ± c</span></div>
       <div class="card-b">
+        <div class="charSrc" id="charSrc">当前：尚未运行</div>
         <div class="charRow">
           <button type="button" data-k="cur">用当前工况</button>
           <button type="button" data-k="sub">缓坡预设</button>
@@ -415,7 +422,7 @@ async function runCase(){
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
     t_end: (+$("#te").value) * 3600, Nx: +$("#Nx").value,
-    dense: true, frames: 41,
+    dense: true, frames: 81,
     precision: !!($("#precise") && $("#precise").checked),
     h_dn: $("#hdn").value.trim() === "auto" ? null : +$("#hdn").value
   };
@@ -503,25 +510,18 @@ function drawFamily(R, sel){
     ctx.fillStyle = "rgba(46,109,164,0.10)"; ctx.fill();
   }
 
-  // 各时刻水面线
-  snaps.forEach((hs, k) => {
-    ctx.beginPath();
-    x.forEach((v,i)=>{ const z = bed[i] + hs[i]; i?ctx.lineTo(X(v),Y(z)):ctx.moveTo(X(v),Y(z)); });
-    const isSel = (sel != null && k === sel);
-    const alpha = (sel == null)
-      ? 0.25 + 0.75 * (k / Math.max(snaps.length-1,1))
-      : (isSel ? 1.0 : 0.32);
-    ctx.strokeStyle = "rgba(46,109,164," + alpha.toFixed(2) + ")";
-    ctx.lineWidth = isSel ? 3.0 : (sel == null && k === snaps.length-1 ? 2.6 : 1.8);
-    ctx.stroke();
-    if(sel == null || isSel){
-      const xi = Math.floor(x.length*0.62);
-      ctx.fillStyle = isSel ? "#b23c4a" : "rgba(46,109,164,.85)";
-      ctx.font = (isSel ? "600 11.5px" : "10.5px") + " sans-serif"; ctx.textAlign = "left";
-      ctx.fillText("t=" + hours[k] + "h" + (isSel ? "（当前）" : ""),
-                   X(x[xi]), Y(bed[xi]+hs[xi]) - 5);
-    }
-  });
+  // 只画当前时刻那一帧（其余帧用淡蓝包络带表示范围，避免一堆线盖住真值）
+  const hsSel = snaps[selK];
+  ctx.beginPath();
+  x.forEach((v,i)=>{ const z = bed[i] + hsSel[i]; i?ctx.lineTo(X(v),Y(z)):ctx.moveTo(X(v),Y(z)); });
+  ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 3.2;
+  ctx.lineJoin = "round"; ctx.stroke();
+  const xi = Math.floor(x.length*0.62);
+  ctx.fillStyle = "#b23c4a"; ctx.font = "600 11.5px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("t=" + hours[selK] + "h（当前）", X(x[xi]), Y(bed[xi]+hsSel[xi]) - 6);
+  ctx.fillStyle = "rgba(46,109,164,.85)"; ctx.font = "10.5px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText("淡蓝带 = 全部 " + snaps.length + " 帧的范围", w - pad.r - 4, pad.t + 12);
   // 坐标轴
   ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h-pad.b); ctx.lineTo(w-pad.r, h-pad.b); ctx.stroke();
@@ -1159,6 +1159,12 @@ const CHAR_CASES = {
 async function runChar(kind){
   const box = $("#charVerdict");
   box.textContent = "实验进行中…";
+  document.querySelectorAll(".charRow button").forEach(b=>{
+    b.classList.toggle("on", b.dataset.k === kind);
+  });
+  const src = {cur: "用当前工况", sub: "缓坡预设", sup: "陡坡预设"}[kind] || kind;
+  const srcEl = $("#charSrc");
+  if(srcEl) srcEl.textContent = "当前：" + src;
   try{
     const p = (kind === "cur")
       ? {L:+$("#L").value, b:+$("#b").value, m:+$("#m").value, n:+$("#n").value,
@@ -1167,6 +1173,8 @@ async function runChar(kind){
     const r = await postJSON("/api/unsteady/characteristic", p);
     if(!r.ok){ box.textContent = "实验失败：" + (r.error || "未知"); return; }
     drawCharChart(r);
+    if(srcEl) srcEl.textContent = "当前：" + src + "（L=" + r.L + " m，b=" + r.b +
+      " m，i₀=" + r.i0 + "，Q₀=" + r.Q0 + " m³/s）";
     const bits = [];
     const regimeCn = r.regime === "subcritical" ? "缓流" : (r.regime === "supercritical" ? "急流" : "跨越临界");
     bits.push("工况：L=" + r.L + " m，b=" + r.b + " m，i₀=" + r.i0 + "，Q₀=" + r.Q0 +
@@ -1259,6 +1267,10 @@ document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("clic
 if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
 if($("#randBtn")) $("#randBtn").addEventListener("click", randomCase);
+if($("#precise")) $("#precise").addEventListener("change", e=>{
+  const pill = $("#precisePill");
+  if(pill) pill.classList.toggle("active", !!e.target.checked);
+});
 if($("#chatInput")){ $("#chatInput").addEventListener("input", e=>autoGrow(e.target)); }
 refreshHnHint(); renderChips(); setInterval(renderChips, 9000);
 $("#run").addEventListener("click", runCase);

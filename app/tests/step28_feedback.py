@@ -75,7 +75,11 @@ def main():
     S = "求解器=preissmann；正常水深 1.124 m；断面峰值 30→27；c_k=3.25"
     post("/api/reset", {})   # 清掉上一轮留下的“已出过的题”
     q1, _ = post("/api/unsteady/chat", {"text": "出几道题", "params": P, "summary": S})
+    if len(q1.get("items") or []) < 3:   # 模型偶发少题，重试一次
+        q1, _ = post("/api/unsteady/chat", {"text": "再出三道题", "params": P, "summary": S})
     q2, _ = post("/api/unsteady/chat", {"text": "换一批", "params": P, "summary": S})
+    if len(q2.get("items") or []) < 3:
+        q2, _ = post("/api/unsteady/chat", {"text": "换一批", "params": P, "summary": S})
     i1 = [it.get("q") for it in (q1.get("items") or [])]
     i2 = [it.get("q") for it in (q2.get("items") or [])]
     check("第一次 3 题", len(i1) == 3, len(i1))

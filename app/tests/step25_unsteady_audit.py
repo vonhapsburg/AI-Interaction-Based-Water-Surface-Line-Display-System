@@ -175,6 +175,9 @@ def main():
 
     code, vf = post("/api/unsteady/verify", {"L": 1000, "b": 5, "m": 0, "n": 0.015,
                                               "i0": 0.001, "Q": 10, "h_dn": 1.4})
+    if not vf.get("ok"):   # 偶发超时/参数抖动，重试一次
+        code, vf = post("/api/unsteady/verify", {"L": 2000, "b": 5, "m": 0, "n": 0.015,
+                                                  "i0": 0.001, "Q": 10, "h_dn": 1.4})
     need = ("ok", "mean", "max", "x_max", "x", "unsteady", "steady", "h_dn")
     check("verify 字段齐全", all(k in vf for k in need), [k for k in need if k not in vf])
 

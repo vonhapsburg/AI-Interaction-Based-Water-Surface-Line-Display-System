@@ -129,37 +129,61 @@ def answer(text, params, summary):
 
 
 def _local_quiz(params, summary, exclude):
-    """模型不给力时的兜底题库：只用参数与结果里能解析出的数字。"""
+    """模型不给力时的兜底题库；参数不全时只出概念题，绝不报错。"""
     import re as _re
     p = params or {}
     L = p.get("L"); Q0 = p.get("Q0"); Qp = p.get("Qpeak")
-    tp = p.get("t_peak_h"); tb = p.get("t_base_h"); te = p.get("t_end_h")
-    hn = None; ck = None; pk = None
+    tp = p.get("t_peak_h"); tb = p.get("t_base_h")
+    hn = ck = pk = None
     m = _re.search(r"正常水深\s*([0-9.]+)", summary or "")
-    if m: hn = float(m.group(1))
+    if m:
+        hn = float(m.group(1))
     m = _re.search(r"c_k\s*=\s*([0-9.]+)", summary or "")
-    if m: ck = float(m.group(1))
+    if m:
+        ck = float(m.group(1))
     m = _re.search(r"([0-9.]+)\s*→\s*([0-9.]+)", summary or "")
-    if m: pk = float(m.group(2))
+    if m:
+        pk = float(m.group(2))
+
     out = []
+
     def add(t, q, a, w):
         out.append({"type": t, "q": q, "a": a, "why": w})
-    add("数值计算", "涨水阶段流量平均变化率是多少（m³/s per h）？",
-        "(%s − %s)/%s = %.2f m³/s per h" % (Qp, Q0, tp, (Qp - Q0) / tp)
-        if (Qp and Q0 and tp) else "条件不足",
-        "三角形过程线涨水段斜率 = (Q_peak − Q₀)/t_peak。")
-    add("数值计算", "回落阶段流量平均变化率是多少（m³/s per h）？",
-        "(%s − %s)/(%s − %s) = %.2f m³/s per h" % (Qp, Q0, tb, tp, (Qp - Q0) / (tb - tp))
-        if (Qp and Q0 and tb and tp and tb > tp) else "条件不足",
-        "回落段历时 = t_base − t_peak，斜率取负。")
-    if pk is not None and Qp:
-        add("结果对比", "下游断面峰值相对上游削减了多少（%%）？",
-            "(%.1f − %.1f)/%.1f = %.1f%%" % (Qp, pk, Qp, (Qp - pk) / Qp * 100),
-            "峰值沿程衰减即坦化，削峰率 = (Q_peak − Q_down)/Q_peak。")
-    if L and ck:
-        add("数值计算", "按运动波速估算洪水波传播时间（h）？",
-            "%s/%s ≈ %.2f h" % (L, ck, L / ck / 3600),
-            "传播时间 ≈ L/c_k；实际峰现还要加上坦化造成的滞后。")
+
+    def num(x):
+        return isinstance(x, (int, float)) and x is not None
+
+    try:
+        if num(Qp) and num(Q0) and num(tp) and tp:
+            add("数值计算", "涨水阶段流量平均变化率是多少（m³/s per h）？",
+                "(%.1f − %.1f)/%.1f = %.2f m³/s per h" % (Qp, Q0, tp, (Qp - Q0) / tp),
+                "三角形过程线涨水段斜率 = (Q_peak − Q₀)/t_peak。")
+    except Exception:
+        pass
+    try:
+        if num(Qp) and num(Q0) and num(tp) and num(tb) and tb > tp:
+            add("数值计算", "回落阶段流量平均变化率是多少（m³/s per h）？",
+                "(%.1f − %.1f)/(%.1f − %.1f) = %.2f m³/s per h"
+                % (Qp, Q0, tb, tp, (Qp - Q0) / (tb - tp)),
+                "回落段历时 = t_base − t_peak，斜率取负。")
+    except Exception:
+        pass
+    try:
+        if num(pk) and num(Qp) and Qp:
+            add("结果对比", "下游断面峰值相对上游削减了多少（%）？",
+                "(%.1f − %.1f)/%.1f = %.1f%%" % (Qp, pk, Qp, (Qp - pk) / Qp * 100),
+                "峰值沿程衰减即坦化，削峰率 = (Q_peak − Q_down)/Q_peak。")
+    except Exception:
+        pass
+    try:
+        if num(L) and num(ck) and ck:
+            add("数值计算", "按运动波速估算洪水波传播时间（h）？",
+                "%.0f/%.2f ≈ %.2f h" % (L, ck, L / ck / 3600),
+                "传播时间 ≈ L/c_k；实际峰现还要加上坦化造成的滞后。")
+    except Exception:
+        pass
+
+    # 以下四题不依赖具体参数，保证任何情况下都能凑够 3 题
     add("概念辨析", "为什么同一流量在涨水段和落水段对应不同水深？",
         "涨水段 ∂h/∂t>0，附加比降使同流量下 h 偏小；落水段相反，于是形成绳套。",
         "h–Q 多值来自非恒定流的附加比降项。")
@@ -172,8 +196,10 @@ def _local_quiz(params, summary, exclude):
     add("工程应用", "若下游水位抬高，上游水深会怎样变化？为什么？",
         "会抬高（回水顶托），扰动沿 v−c 上溯，缓流条件下成立。",
         "下游水位是缓流的下游控制条件。")
-    # 去掉与已出题重复的，按 exclude 长度轮换起点
-    def norm(t): return "".join((t or "").split())
+
+    def norm(t):
+        return "".join(str(t or "").split())
+
     ex = [norm(e) for e in (exclude or [])]
     pool = [it for it in out if norm(it["q"]) not in ex]
     if not pool:
@@ -204,7 +230,7 @@ def quiz(params, summary, exclude=None):
 
     # 后处理：模型可能无视“别重复”，这里做相似度去重；不足 3 题再补一次
     def _norm(t):
-        return "".join((t or "").split())
+        return "".join(str(t or "").split())
 
     def _dup(a, b):
         import difflib

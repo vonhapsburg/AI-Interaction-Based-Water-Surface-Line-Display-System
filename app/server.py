@@ -980,6 +980,12 @@ class Handler(SimpleHTTPRequestHandler):
                 ans = uchat.answer(text, params, summary)
                 return self._json({"act": "answer", "reply": ans.get("reply", "")})
             except Exception as e:
+                import traceback as _tb
+                try:
+                    with open(os.path.join(ROOT, "_chat_err.log"), "a", encoding="utf-8") as _f:
+                        _f.write(_tb.format_exc() + "\n----\n")
+                except Exception:
+                    pass
                 return self._json({"act": "answer",
                                    "reply": "对话通道出错：%s: %s" % (type(e).__name__, e)})
 
