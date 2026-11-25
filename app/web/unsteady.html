@@ -276,7 +276,7 @@ window.addEventListener("unhandledrejection", function(e){
             <div class="field"><label>开始关闭 (h)</label><input id="gateTc" type="number" step="0.1" value="0.8"></div>
             <div class="field"><label>关闭历时 (h)</label><input id="gateTr" type="number" step="0.1" value="0.5"></div>
           </div>
-          <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)；下游顶托时按淹没出流。</div>
+          <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)，以局部水头损失形式加入方程，闸前水面单调过渡。</div>
         </div>
         <button id="run">计算</button>
         <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>

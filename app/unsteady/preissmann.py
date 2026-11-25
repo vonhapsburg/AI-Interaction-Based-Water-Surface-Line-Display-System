@@ -174,7 +174,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q_st.append([float(Q[i]) for i in stations])
         if gate_on:
             aa = gate_a(t_now)
-            qg = float(gate_Q(h[g_gate], h[g_gate + 1], aa))
+            qg = 0.5 * (float(Q[g_gate]) + float(Q[g_gate + 1]))
             gate_hist["t"].append(t_now)
             gate_hist["a"].append(aa)
             gate_hist["Q"].append(qg)
@@ -216,11 +216,13 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 + G * Abar * (theta * dh_new + (1 - theta) * dh_old) \
                 + G * Abar * (Sf - i0)
             if gate_on:
-                C = C.copy()
+                # 闸门按局部水头损失处理：Δh = Q|Q| / (2g(μ·b·a)²)
+                # 折算到单位长度即 g·A·S_gate，避免“闸前一个网格塌成干床”的假解
                 M = M.copy()
-                C[g_gate] = qR[g_gate] - qL[g_gate]
-                qg = gate_Q(hL[g_gate], hR[g_gate], a_now)
-                M[g_gate] = qg - 0.5 * (qL[g_gate] + qR[g_gate])
+                a_eff = max(a_now, 1e-3)
+                qq = qL[g_gate] * abs(qL[g_gate])
+                M[g_gate] = M[g_gate] + Abar[g_gate] * qq / \
+                    (2.0 * (mu_g * b_g * a_eff) ** 2 * dx)
             return C, M
 
         def residual(U):
@@ -290,7 +292,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     net_in = inflow - outflow
     mass_err = abs((storage1 - storage0) - net_in) / max(abs(inflow), 1e-9)
 
-    qg_final = float(gate_Q(h[g_gate], h[g_gate + 1], gate_a(t))) if gate_on else 0.0
+    qg_final = (0.5 * (float(Q[g_gate]) + float(Q[g_gate + 1])) if gate_on else 0.0)
     keep = max(1, len(t_hist) // 500)
     T = [round(v, 1) for v in t_hist[::keep]]
     stations_out = []
