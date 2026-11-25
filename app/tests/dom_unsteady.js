@@ -128,6 +128,13 @@ check("drawFamily（含包络带）", () => { sandbox.drawFamily(R, 0); });
 check("drawHydro", () => { sandbox.drawHydro(R); });
 check("drawLoop（含引线标签）", () => { sandbox.drawLoop(R); });
 check("drawDiag", () => { sandbox.drawDiag(R); });
+check("drawGate（含闸门）", () => {
+  sandbox.drawGate(Object.assign({}, R, { gate: {
+    on: true, x: 500, b_g: 5, z_s: 0, mu: 0.62,
+    t: [0, 1800, 3600], a: [1, 0.8, 0.5],
+    Q: [10, 8, 6], hu: [2.0, 2.6, 3.4], hd: [1.4, 1.5, 1.6],
+  }}));
+});
 check("drawCharChart（缓流）", () => {
   sandbox.drawCharChart({
     regime: "subcritical", L: 1000, t_end: 1300, theory_up: 650,

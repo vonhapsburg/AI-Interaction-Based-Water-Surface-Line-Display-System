@@ -169,6 +169,11 @@
   .precisePill input{width:auto;margin:0;}
   .precisePill.active{background:#2f7d54;color:#fff;border-color:#2f7d54;}
   .precisePill.active input{accent-color:#fff;}
+  .gateToggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#41556b;
+              margin:10px 0 4px;cursor:pointer;}
+  .gateToggle input{width:auto;margin:0;}
+  .gateBox{border:1px dashed #c3ccd5;border-radius:8px;padding:10px;margin:6px 0 10px;
+           background:#fafcfe;}
 </style>
 </head>
 <body>
@@ -238,6 +243,8 @@ window.addEventListener("unhandledrejection", function(e){
           <button class="preset" data-p="long">长渠坦化</button>
           <button class="preset eng" data-p="backwater">回水顶托</button>
           <button class="preset eng" data-p="drawdown">下游落水</button>
+          <button class="preset eng" data-p="pre_release">预泄腾库容</button>
+          <button class="preset eng" data-p="gate_cut">关闸削峰</button>
           <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
         </div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
@@ -256,6 +263,20 @@ window.addEventListener("unhandledrejection", function(e){
           <div class="field"><label>模拟总时长 (h)</label><input id="te" type="number" step="1" value="12"></div>
           <div class="field"><label>下游水位 (m)</label><input id="hdn" type="text" value="auto" title="auto = 正常水深"><div class="hintline" id="hnHint">auto = 正在取正常水深…</div></div>
           <div class="field"><label>网格数 Nx</label><input id="Nx" type="number" step="10" value="121"></div>
+        </div>
+        <label class="gateToggle"><input type="checkbox" id="gateOn"> 含闸门（内边界，仅工程模式）</label>
+        <div class="gateBox" id="gateBox" style="display:none;">
+          <div class="grid2">
+            <div class="field"><label>闸位（占渠长 %）</label><input id="gateS" type="number" step="1" value="50"></div>
+            <div class="field"><label>闸宽 b_g (m)</label><input id="gateB" type="number" step="0.1" value="5"></div>
+            <div class="field"><label>底槛高程 z_s (m)</label><input id="gateZ" type="number" step="0.1" value="0"></div>
+            <div class="field"><label>流量系数 μ</label><input id="gateMu" type="number" step="0.01" value="0.62"></div>
+            <div class="field"><label>初始开度 a₀ (m)</label><input id="gateA0" type="number" step="0.1" value="1.0"></div>
+            <div class="field"><label>终止开度 a₁ (m)</label><input id="gateA1" type="number" step="0.1" value="0.5"></div>
+            <div class="field"><label>开始关闭 (h)</label><input id="gateTc" type="number" step="0.1" value="0.8"></div>
+            <div class="field"><label>关闭历时 (h)</label><input id="gateTr" type="number" step="0.1" value="0.5"></div>
+          </div>
+          <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)；下游顶托时按淹没出流。</div>
         </div>
         <button id="run">计算</button>
         <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>
@@ -344,6 +365,14 @@ window.addEventListener("unhandledrejection", function(e){
         </div>
         <canvas id="cChar" height="240"></canvas>
         <div id="charVerdict" style="margin-top:8px;">点上面的按钮做一次实验：在渠道下游加一个小水位扰动，看它能不能传到上游。</div>
+      </div>
+    </section>
+
+    <section class="card" id="gateCard" style="display:none;">
+      <div class="card-h">⑤ 闸门：开度、过闸流量与闸上水位 <span class="tag">内边界</span></div>
+      <div class="card-b">
+        <div class="plot"><canvas id="cGate" class="base" height="260"></canvas></div>
+        <div class="note" id="gateNote">蓝色=过闸流量，红色=闸上水位，绿色=闸下水位，灰色虚线=开度。</div>
       </div>
     </section>
 
@@ -442,8 +471,22 @@ async function runCase(){
     ? "全方程隐式求解中（Preissmann + Newton）…" : "扩散波显式推进中…";
   setMsg(label);
   showBusy(label);
+  const gateOn = !!($("#gateOn") && $("#gateOn").checked);
+  if(gateOn && currentModel() !== "preissmann"){
+    mode = "engineering";
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
+    if(typeof updateModeVisuals === "function") updateModeVisuals();
+  }
+  const gate = gateOn ? {
+    on: true,
+    s: (+$("#gateS").value) / 100 * (+$("#L").value),
+    b_g: +$("#gateB").value, z_s: +$("#gateZ").value, mu: +$("#gateMu").value,
+    a0: +$("#gateA0").value, a_end: +$("#gateA1").value,
+    t_close: (+$("#gateTc").value) * 3600, t_ramp: (+$("#gateTr").value) * 3600
+  } : null;
   const payload = {
     model: currentModel(),
+    gate: gate,
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
@@ -499,6 +542,7 @@ function drawAll(R){
   safe("hydro", () => drawHydro(R));
   safe("loop", () => drawLoop(R));
   safe("diag", () => drawDiag(R));
+  safe("gate", () => drawGate(R));
   safe("slider", () => initTimeSlider(R));
 }
 
@@ -580,6 +624,22 @@ function drawFamily(R, sel){
   ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 3.2;
   ctx.lineJoin = "round"; ctx.stroke();
   ctx.restore();
+
+  // 闸门标记
+  if(R.gate && R.gate.on && R.gate.x >= xa && R.gate.x <= xb){
+    const gx = X(R.gate.x);
+    ctx.save();
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = "#b06a1f"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(gx, pad.t); ctx.lineTo(gx, h - pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#b06a1f";
+    ctx.beginPath();
+    ctx.moveTo(gx, pad.t + 6); ctx.lineTo(gx - 5, pad.t - 2); ctx.lineTo(gx + 5, pad.t - 2);
+    ctx.closePath(); ctx.fill();
+    ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("闸 x=" + Math.round(R.gate.x) + " m", gx + 6, pad.t + 16);
+    ctx.restore();
+  }
 
   // 标签与坐标轴
   const xi = Math.floor(x.length*0.62);
@@ -1004,7 +1064,11 @@ const PRESETS = {
   sharp:     {mode:"teaching", L:8000,  b:4, m:0, n:0.02,  i0:0.002, Q0:6,  Qpeak:40, tp:0.5, tb:1, te:8,  hdn:"auto"},
   long:      {mode:"teaching", L:30000, b:8, m:0, n:0.022, i0:0.0005,Q0:20, Qpeak:60, tp:2, tb:4, te:24, hdn:"auto"},
   backwater: {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:1.75},
-  drawdown:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:0.85}
+  drawdown:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:12, Qpeak:12, tp:1, tb:2, te:6, hdn:0.85},
+  pre_release:{mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
+               gate:{s:50,b:5,z:0,mu:0.62,a0:1.2,a1:0.8,tc:0.5,tr:0.5}},
+  gate_cut:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
+               gate:{s:50,b:5,z:0,mu:0.62,a0:1.0,a1:0.45,tc:0.8,tr:0.5}}
 };
 
 function applyPreset(key){
@@ -1017,6 +1081,15 @@ function applyPreset(key){
   set("#L",p.L); set("#b",p.b); set("#m",p.m); set("#n",p.n); set("#i0",p.i0);
   set("#Q0",p.Q0); set("#Qpeak",p.Qpeak); set("#tp",p.tp); set("#tb",p.tb); set("#te",p.te);
   set("#hdn",p.hdn);
+  const g = p.gate || null;
+  const gon = $("#gateOn");
+  if(gon){ gon.checked = !!g; }
+  const gbox = $("#gateBox");
+  if(gbox){ gbox.style.display = g ? "" : "none"; }
+  if(g){
+    set("#gateS",g.s); set("#gateB",g.b); set("#gateZ",g.z); set("#gateMu",g.mu);
+    set("#gateA0",g.a0); set("#gateA1",g.a1); set("#gateTc",g.tc); set("#gateTr",g.tr);
+  }
   refreshHnHint();
   runCase();
 }
@@ -1329,6 +1402,59 @@ async function runChar(kind){
   }
 }
 
+/* ⑤ 闸门：开度 / 过闸流量 / 闸上闸下水位 */
+function drawGate(R){
+  const card = $("#gateCard");
+  const g = R.gate;
+  if(!card) return;
+  if(!g || !g.on){ card.style.display = "none"; return; }
+  card.style.display = "";
+  const {ctx, w, h} = setup($("#cGate"), 260);
+  const pad = {l:54, r:54, t:18, b:32};
+  const t = g.t, Q = g.Q, hu = g.hu, hd = g.hd, a = g.a;
+  const tmax = Math.max.apply(null, t.concat([1]));
+  const qmax = Math.max.apply(null, Q.concat([1])) * 1.15;
+  const hmax = Math.max.apply(null, hu.concat(hd).concat([0.1])) * 1.12;
+  const amax = Math.max.apply(null, a.concat([0.1])) * 1.15;
+  const X = v => pad.l + (v / tmax) * (w - pad.l - pad.r);
+  const YQ = v => h - pad.b - (v / qmax) * (h - pad.t - pad.b);
+  const YH = v => h - pad.b - (v / hmax) * (h - pad.t - pad.b);
+  const YA = v => h - pad.b - (v / amax) * (h - pad.t - pad.b);
+
+  ctx.strokeStyle = "#eef1f5";
+  for(let k = 0; k <= 4; k++){
+    const yy = pad.t + (h - pad.t - pad.b) * k / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+  }
+  const line = (ys, yFn, color, width) => {
+    ctx.beginPath();
+    t.forEach((tv, i) => { i ? ctx.lineTo(X(tv), yFn(ys[i])) : ctx.moveTo(X(tv), yFn(ys[i])); });
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+  };
+  line(Q, YQ, "#2e6da4", 2.2);
+  line(hu, YH, "#b23c4a", 2.0);
+  line(hd, YH, "#2f7d54", 1.8);
+  ctx.save(); ctx.setLineDash([5, 3]); line(a, YA, "#8b98a6", 1.4); ctx.restore();
+
+  ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b); ctx.stroke();
+  ctx.fillStyle = "#8b98a6"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 8);
+  ctx.textAlign = "left";
+  ctx.fillText("Q (m³/s)", 4, pad.t + 10);
+  ctx.textAlign = "right";
+  ctx.fillText("水位 (m)", w - 4, pad.t + 10);
+
+  const iEnd = Q.length - 1;
+  const note = $("#gateNote");
+  if(note){
+    note.innerHTML = "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
+      "；开度 " + g.a[0].toFixed(2) + " → " + g.a[iEnd].toFixed(2) + " m；" +
+      "最终过闸 Q=" + Q[iEnd].toFixed(2) + " m³/s，闸上最高水位 " +
+      Math.max.apply(null, hu).toFixed(2) + " m。";
+  }
+}
+
 function drawCharChart(r){
   const cv = $("#cChar");
   const dpr = window.devicePixelRatio || 1;
@@ -1398,6 +1524,16 @@ if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
 if($("#randBtn")) $("#randBtn").addEventListener("click", randomCase);
 bindFamilyZoom();
+if($("#gateOn")) $("#gateOn").addEventListener("change", e=>{
+  const box = $("#gateBox");
+  if(box) box.style.display = e.target.checked ? "" : "none";
+  if(e.target.checked && currentModel() !== "preissmann"){
+    mode = "engineering";
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
+    if(typeof updateModeVisuals === "function") updateModeVisuals();
+  }
+  runCase();
+});
 if($("#precise")) $("#precise").addEventListener("change", e=>{
   const pill = $("#precisePill");
   if(pill) pill.classList.toggle("active", !!e.target.checked);

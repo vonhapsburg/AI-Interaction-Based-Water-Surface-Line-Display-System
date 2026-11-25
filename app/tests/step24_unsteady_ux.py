@@ -70,6 +70,9 @@ def main():
         check("① 图可缩放", "famZoom" in html and 'id="famIn"' in html)
         check("公式速查已扩充", html.count('class="f"') >= 18)
         check("切换模式会自动重算", "caseRunning" in html and "rerunPending" in html)
+        check("含闸门开关与参数", 'id="gateOn"' in html and 'id="gateBox"' in html)
+        check("闸门结果卡与绘图", 'id="gateCard"' in html and "function drawGate" in html)
+        check("闸门预设算例", "预泄腾库容" in html and "关闸削峰" in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)

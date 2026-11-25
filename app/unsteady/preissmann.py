@@ -45,7 +45,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q0=10.0, Qpeak=30.0, t_peak=3600.0, t_base=7200.0, t_end=12 * 3600.0,
         h_dn=None, h_init=None, Nx=81, theta=0.7, psi=0.5, dt=None,
         snap_hours=None, station_fracs=None, max_newton=6, tol=1e-7,
-        cost_budget=1.2e11):
+        cost_budget=1.2e11, gate=None):
     """跑一次全方程非恒定演进（缓流）。
 
     返回结构与扩散波一致，便于同一页面共用绘图。
@@ -112,13 +112,59 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     auto_coarsened = bool(_auto or Nx < Nx_req)
 
+    # ---------- 闸门内边界（可选）----------
+    gp = dict(gate or {})
+    gate_on = bool(gp.get("on", False)) or (gp.get("s") is not None)
+    if gate_on:
+        s_g = float(gp.get("s", 0.5 * L))
+        b_g = float(gp.get("b_g", b))
+        z_s = float(gp.get("z_s", 0.0))
+        mu_g = float(gp.get("mu", 0.62))
+        a0 = float(gp.get("a0", 1.0))
+        a_end = float(gp.get("a_end", a0))
+        t_close = float(gp.get("t_close", 0.0))
+        t_ramp = float(gp.get("t_ramp", 0.0))
+        g_gate = int(round(s_g / L * (Nx - 1)))
+        g_gate = max(1, min(Nx - 2, g_gate))
+    else:
+        s_g = b_g = z_s = mu_g = a0 = a_end = t_close = t_ramp = 0.0
+        g_gate = -1
+
+    def gate_a(t):
+        if not gate_on:
+            return 0.0
+        if t <= t_close:
+            return a0
+        if t_ramp <= 1e-9:
+            return a_end
+        if t < t_close + t_ramp:
+            return a0 + (a_end - a0) * (t - t_close) / t_ramp
+        return a_end
+
+    def gate_Q(hu, hd, a):
+        hu = np.asarray(hu, dtype=float)
+        hd = np.asarray(hd, dtype=float)
+        if (not gate_on) or a <= 1e-9:
+            return np.zeros_like(hu)
+        Hu = np.maximum(hu - z_s, 1e-4)
+        Hd = np.maximum(hd - z_s, 1e-4)
+        free = mu_g * b_g * a * np.sqrt(2.0 * G * Hu)
+        sub = mu_g * b_g * a * np.sqrt(2.0 * G * np.maximum(Hu - Hd, 1e-4))
+        return np.where(Hd < 0.65 * a, free, sub)
+
+    gate_hist = {"t": [], "a": [], "Q": [], "hu": [], "hd": []}
+    a_now = gate_a(0.0)
+
     snap_t = [hr * 3600.0 for hr in snap_hours if hr * 3600.0 <= t_end]
     h_snap, t_snap = [], []
     si = 0
     while si < len(snap_t) and snap_t[si] <= 1e-9:
         h_snap.append(h.copy()); t_snap.append(0.0); si += 1
 
-    stations = sorted({int(round(f * (Nx - 1))) for f in station_fracs})
+    stations = {int(round(f * (Nx - 1))) for f in station_fracs}
+    if gate_on:
+        stations.add(g_gate)
+    stations = sorted(stations)
     t_hist, h_st, Q_st = [], [], []
     rec_every = max(1, steps // 600)
 
@@ -126,6 +172,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         t_hist.append(t_now)
         h_st.append([float(h[i]) for i in stations])
         Q_st.append([float(Q[i]) for i in stations])
+        if gate_on:
+            aa = gate_a(t_now)
+            qg = float(gate_Q(h[g_gate], h[g_gate + 1], aa))
+            gate_hist["t"].append(t_now)
+            gate_hist["a"].append(aa)
+            gate_hist["Q"].append(qg)
+            gate_hist["hu"].append(float(h[g_gate]))
+            gate_hist["hd"].append(float(h[g_gate + 1]))
 
     record(0.0)
     inflow = outflow = 0.0
@@ -136,6 +190,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     for step in range(steps):
         t_new = t + dt
         Qu = Q_up(t_new)
+        a_now = gate_a(t_new)
         h_down = h_dn
         h_old, Q_old = h.copy(), Q.copy()
         hLo, hRo = h_old[:-1], h_old[1:]
@@ -160,6 +215,12 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 + theta * conv_new + (1 - theta) * conv_old \
                 + G * Abar * (theta * dh_new + (1 - theta) * dh_old) \
                 + G * Abar * (Sf - i0)
+            if gate_on:
+                C = C.copy()
+                M = M.copy()
+                C[g_gate] = qR[g_gate] - qL[g_gate]
+                qg = gate_Q(hL[g_gate], hR[g_gate], a_now)
+                M[g_gate] = qg - 0.5 * (qL[g_gate] + qR[g_gate])
             return C, M
 
         def residual(U):
@@ -229,6 +290,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     net_in = inflow - outflow
     mass_err = abs((storage1 - storage0) - net_in) / max(abs(inflow), 1e-9)
 
+    qg_final = float(gate_Q(h[g_gate], h[g_gate + 1], gate_a(t))) if gate_on else 0.0
     keep = max(1, len(t_hist) // 500)
     T = [round(v, 1) for v in t_hist[::keep]]
     stations_out = []
@@ -271,7 +333,19 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "h_peak_normal": None,
             "h_dn_used": round(float(h_dn), 4),
             "h_dn_is_normal": bool(abs(h_dn - h_n0) < 1e-9),
+            "gate_on": bool(gate_on),
+            "gate_x": (round(float(x[g_gate]), 2) if gate_on else None),
+            "gate_Q_final": round(qg_final, 4),
         },
+        "gate": ({
+            "on": True, "x": round(float(x[g_gate]), 2),
+            "b_g": b_g, "z_s": z_s, "mu": mu_g,
+            "t": [round(v, 1) for v in gate_hist["t"][::keep]],
+            "a": [round(v, 4) for v in gate_hist["a"][::keep]],
+            "Q": [round(v, 4) for v in gate_hist["Q"][::keep]],
+            "hu": [round(v, 4) for v in gate_hist["hu"][::keep]],
+            "hd": [round(v, 4) for v in gate_hist["hd"][::keep]],
+        } if gate_on else {"on": False}),
         "meta": {"L": L, "b": b, "m": m, "n": n, "i0": i0,
                  "Q0": Q0, "Qpeak": Qpeak, "t_peak": t_peak, "t_base": t_base,
                  "h_n": round(float(h_n0), 5), "h_dn": round(float(h_dn), 5),

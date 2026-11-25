@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-25-ux3"
+BUILD_ID = "2026-11-25-gate1"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -612,6 +612,12 @@ class Handler(SimpleHTTPRequestHandler):
                 h_dn = None if h_dn_body in (None, "", "auto") else float(h_dn_body)
                 model = (body.get("model") or "diffusion").lower()
                 precise = bool(body.get("precision"))
+                gate = body.get("gate") or None
+                if isinstance(gate, dict) and not gate.get("on", True):
+                    gate = None
+                if gate and model != "preissmann":
+                    return self._json({"ok": False,
+                                       "error": "闸门内边界需要工程模式（全方程），请切换后重算"}, 400)
                 # 时间轴：dense=true 时返回 40+ 帧，供页面滑块逐帧查看
                 snap_hours = None
                 if body.get("dense"):
@@ -642,7 +648,7 @@ class Handler(SimpleHTTPRequestHandler):
                     res = up.run(
                         L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                         t_peak=tp, t_base=tb, t_end=te, h_dn=hd,
-                        h_init=h_init, Nx=Nx, snap_hours=snap_hours)
+                        h_init=h_init, Nx=Nx, snap_hours=snap_hours, gate=gate)
                 else:
                     res = us.run(
                         L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
