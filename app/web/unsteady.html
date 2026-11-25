@@ -372,7 +372,7 @@ window.addEventListener("unhandledrejection", function(e){
     <section class="card" id="gateCard" style="display:none;">
       <div class="card-h">⑤ 闸门：开度、过闸流量与闸上水位 <span class="tag">内边界</span></div>
       <div class="card-b">
-        <div class="plot"><canvas id="cGate" class="base" height="260"></canvas></div>
+        <div class="plot"><canvas id="cGate" class="base" height="260"></canvas><canvas id="ovlGate" class="ovl"></canvas></div>
         <div class="note" id="gateNote">蓝色=过闸流量，红色=闸上水位，绿色=闸下水位，灰色虚线=开度。</div>
       </div>
     </section>
@@ -1258,7 +1258,7 @@ function showTip(text, cx, cy){
 function hideTip(){ $("#tip").style.display = "none"; }
 
 function bindHover(){
-  ["cFamily","cHydro","cLoop"].forEach(id=>{
+  ["cFamily","cHydro","cLoop","cGate"].forEach(id=>{
     const base = document.getElementById(id);
     if(!base || base.dataset.hoverBound) return;
     base.dataset.hoverBound = "1";
@@ -1475,17 +1475,21 @@ function drawGate(R){
   line(hd, YH, "#2f7d54", 1.8);
   line(a, YA, "#8b98a6", 1.4, [5, 3]);
 
-  // 峰值点注记
+  // 峰值点注记（错开：流量标在上方，水位标在下方，避免重叠）
   const iQ = Q.indexOf(Math.max.apply(null, Q));
   const iH = hu.indexOf(Math.max.apply(null, hu));
-  const mark = (i, yFn, val, color, txt) => {
+  const mark = (i, yFn, val, color, txt, dy, align) => {
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(X(t[i]), yFn(val), 3.2, 0, 2 * Math.PI); ctx.fill();
-    ctx.font = "600 10.5px sans-serif"; ctx.textAlign = "left";
-    ctx.fillText(txt, Math.min(X(t[i]) + 6, w - pad.r - 96), yFn(val) - 6);
+    ctx.font = "600 10.5px sans-serif"; ctx.textAlign = align || "left";
+    const tw = ctx.measureText(txt).width;
+    let tx = X(t[i]) + (align === "right" ? -6 : 6);
+    if(tx + tw > w - pad.r - 2) tx = X(t[i]) - 6 - tw;
+    if(tx < pad.l + 2) tx = pad.l + 2;
+    ctx.fillText(txt, tx, yFn(val) + dy);
   };
-  mark(iQ, YQ, Q[iQ], "#2e6da4", "最大过闸 Q=" + Q[iQ].toFixed(2));
-  mark(iH, YH, hu[iH], "#b23c4a", "最高闸上 " + hu[iH].toFixed(2) + " m");
+  mark(iQ, YQ, Q[iQ], "#2e6da4", "最大过闸 Q=" + Q[iQ].toFixed(2) + " m³/s", -9, "left");
+  mark(iH, YH, hu[iH], "#b23c4a", "最高闸上 " + hu[iH].toFixed(2) + " m", 17, "right");
 
   ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
   ctx.beginPath();
@@ -1497,12 +1501,12 @@ function drawGate(R){
   ctx.textAlign = "right"; ctx.fillText("水位 / 开度 (m)", w - 4, pad.t - 18);
   ctx.textAlign = "center"; ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 10);
 
-  // 图例
+  // 图例放在图内底部，避免与峰值标注重叠
   ctx.font = "10.5px sans-serif";
   const legend = [["#2e6da4", false, "过闸流量"], ["#b23c4a", false, "闸上水位"],
                   ["#2f7d54", false, "闸下水位"], ["#8b98a6", true, "开度"]];
   let lx = pad.l + 4;
-  const ly = pad.t + 14;
+  const ly = h - pad.b - 10;
   legend.forEach(([c, dash, label]) => {
     ctx.save();
     if(dash) ctx.setLineDash([4, 2]);
@@ -1513,6 +1517,16 @@ function drawGate(R){
     ctx.fillText(label, lx + 20, ly);
     lx += 20 + ctx.measureText(label).width + 14;
   });
+
+  // 悬停：显示时间、过闸流量、闸上/闸下水位与开度
+  registerHover("cGate", {pad, w, h, x0: 0, x1: tmax,
+    y0: 0, y1: qmax, xs: t,
+    series: [{name: "过闸流量", color: "#2e6da4", ys: Q}],
+    fmt: i => "t = " + (t[i] / 3600).toFixed(2) + " h\n" +
+              "过闸 Q = " + Q[i].toFixed(2) + " m³/s\n" +
+              "闸上水位 = " + hu[i].toFixed(2) + " m\n" +
+              "闸下水位 = " + hd[i].toFixed(2) + " m\n" +
+              "开度 a = " + a[i].toFixed(2) + " m"});
 
   const note = $("#gateNote");
   if(note){
