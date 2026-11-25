@@ -68,6 +68,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     h_n0 = normal_depth(b, m, n, i0, Q0)
     h_dn = float(h_n0 if h_dn is None else h_dn)
+    Nx_req = int(Nx)
     Nx = int(max(30, min(int(Nx), 401)))
     dx = L / (Nx - 1)
     x = np.linspace(0.0, L, Nx)
@@ -80,9 +81,35 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     # 时间步：Preissmann 无条件稳定，但精度要求 Δt 小于 ~dx/c
     c_ref = math.sqrt(G * max(h_n0, 0.05))
+    dt_given = dt is not None
     if dt is None:
         dt = float(min(max(0.5 * dx / max(c_ref, 0.1), 5.0), 60.0))
     steps = int(math.ceil(t_end / dt))
+
+    # 耗时控制：每次 Newton 要解 (2N)³ 的方程组，N 大时极慢。
+    # 用 steps×(2N)³ 估代价，超过预算就自动加粗网格（不低于 81）。
+    _auto = False
+    _budget = 1.2e11
+    while Nx > 81:
+        _dx = L / (Nx - 1)
+        _dt = dt if dt is not None else float(min(max(0.5 * _dx / max(c_ref, 0.1), 5.0), 60.0))
+        _steps = int(math.ceil(t_end / _dt))
+        if _steps * (2 * Nx) ** 3 <= _budget:
+            break
+        Nx = max(81, int(Nx * 0.72))
+        _auto = True
+    if _auto:
+        dx = L / (Nx - 1)
+        x = np.linspace(0.0, L, Nx)
+        h = (np.array(h_init, dtype=float) if h_init is not None else np.full(Nx, h_n0))
+        if len(h) != Nx:
+            h = np.interp(x, np.linspace(0.0, L, len(h)), h)
+        Q = np.full(Nx, Q0)
+        if not dt_given:
+            dt = float(min(max(0.5 * dx / max(c_ref, 0.1), 5.0), 60.0))
+        steps = int(math.ceil(t_end / dt))
+
+    auto_coarsened = bool(_auto or Nx < Nx_req)
 
     snap_t = [hr * 3600.0 for hr in snap_hours if hr * 3600.0 <= t_end]
     h_snap, t_snap = [], []
@@ -230,7 +257,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         "h_snap": [[round(float(v), 4) for v in hs] for hs in h_snap],
         "stations": stations_out,
         "diagnostics": {
-            "dt": round(dt, 3), "steps": steps, "dx": round(dx, 2),
+            "dt": round(dt, 3), "steps": steps, "dx": round(dx, 2), "nx": Nx, "auto_coarsened": auto_coarsened,
             "max_courant": None,
             "mass_err": round(float(mass_err), 6),
             "newton_iters": iters_total,

@@ -147,6 +147,11 @@
   .charRow button[data-k="sup"]{background:#c9741f;}
   #charVerdict{font-size:12px;line-height:1.7;color:#41556b;}
   #charVerdict b{color:#2e6da4;}
+  .msg .hl{color:#c0392b;font-weight:700;}
+  .msg .warn{display:block;margin-top:6px;padding:6px 8px;background:#fdf0f0;
+             border-left:3px solid #b23c4a;color:#8a2b34;border-radius:4px;}
+  .msg .qtype{display:inline-block;font-size:10.5px;color:#2e6da4;background:#e9f1f9;
+              border-radius:99px;padding:0 6px;margin-right:4px;}
 </style>
 </head>
 <body>
@@ -473,6 +478,17 @@ function drawFamily(R, sel){
   ctx.stroke(); ctx.restore();
   ctx.fillStyle = "#5b6b7b"; ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
   ctx.fillText("N-N", X(x[0])+6, Y(bed[0]+hn)-6);
+  // 包络带：所有时刻的最高/最低水面，回水隆起在这里最直观
+  if(snaps.length > 1){
+    const envHi = x.map((_,i)=> Math.max.apply(null, snaps.map(hs=>bed[i]+hs[i])));
+    const envLo = x.map((_,i)=> Math.min.apply(null, snaps.map(hs=>bed[i]+hs[i])));
+    ctx.beginPath();
+    x.forEach((v,i)=> i?ctx.lineTo(X(v),Y(envHi[i])):ctx.moveTo(X(v),Y(envHi[i])));
+    for(let i=x.length-1;i>=0;i--) ctx.lineTo(X(x[i]),Y(envLo[i]));
+    ctx.closePath();
+    ctx.fillStyle = rgba(46,109,164,0.10); ctx.fill();
+  }
+
   // 各时刻水面线
   snaps.forEach((hs, k) => {
     ctx.beginPath();
@@ -480,7 +496,7 @@ function drawFamily(R, sel){
     const isSel = (sel != null && k === sel);
     const alpha = (sel == null)
       ? 0.25 + 0.75 * (k / Math.max(snaps.length-1,1))
-      : (isSel ? 1.0 : 0.16);
+      : (isSel ? 1.0 : 0.32);
     ctx.strokeStyle = "rgba(46,109,164," + alpha.toFixed(2) + ")";
     ctx.lineWidth = isSel ? 3.0 : (sel == null && k === snaps.length-1 ? 2.6 : 1.8);
     ctx.stroke();
@@ -617,12 +633,28 @@ function drawLoop(R){
   ctx.font = "11px sans-serif"; ctx.textAlign = "left";
   ctx.fillText("稳定值 h=" + hSteady.toFixed(3), X(Q[0])+6, Y(hSteady)+14);
   if(iR>=0 && iF>=0){
+    const xR = X(Q[iR]), yR = Y(H[iR]);
+    const xF = X(Q[iF]), yF = Y(H[iF]);
+    // 标签引到空白处，避免两个数字叠在一起
+    let y1 = yR - 30, y2 = yF + 34;
+    if(Math.abs(y1 - y2) < 18){ y1 -= 16; y2 += 16; }
+    y1 = Math.max(pad.t + 10, Math.min(y1, h - pad.b - 6));
+    y2 = Math.max(pad.t + 10, Math.min(y2, h - pad.b - 6));
+    const x1 = Math.min(xR + 14, w - pad.r - 78);
+    const x2 = Math.min(xF + 14, w - pad.r - 78);
+
+    ctx.save(); ctx.strokeStyle = "#c9741f"; ctx.lineWidth = 1; ctx.setLineDash([3,2]);
+    ctx.beginPath(); ctx.moveTo(xR, yR); ctx.lineTo(x1 - 2, y1 + 4); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = "#2f7d54"; ctx.lineWidth = 1; ctx.setLineDash([3,2]);
+    ctx.beginPath(); ctx.moveTo(xF, yF); ctx.lineTo(x2 - 2, y2 - 8); ctx.stroke(); ctx.restore();
+
     ctx.fillStyle = "#c9741f";
-    ctx.beginPath(); ctx.arc(X(Q[iR]), Y(H[iR]), 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillText("涨水 h=" + H[iR].toFixed(3), X(Q[iR])+6, Y(H[iR])-6);
+    ctx.beginPath(); ctx.arc(xR, yR, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("涨水 h=" + H[iR].toFixed(3), x1, y1);
     ctx.fillStyle = "#2f7d54";
-    ctx.beginPath(); ctx.arc(X(Q[iF]), Y(H[iF]), 3.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillText("落水 h=" + H[iF].toFixed(3), X(Q[iF])+6, Y(H[iF])+14);
+    ctx.beginPath(); ctx.arc(xF, yF, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillText("落水 h=" + H[iF].toFixed(3), x2, y2);
   }
   let ipk=0; Q.forEach((q,i)=>{ if(q>Q[ipk]) ipk=i; });
   ctx.fillStyle = "#b23c4a";
@@ -703,6 +735,38 @@ function bubble(text, who){
   return div;
 }
 
+function escHtml(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderReply(el, text){
+  let h = escHtml(text || "");
+  // 「注意：…」整行 → 警示块
+  h = h.replace(/^[「\[]?注意[：:]([^\n]*)[」\]]?/gm,
+                '<span class="warn">注意：$1</span>');
+  // 【…】→ 重点标红
+  h = h.replace(/【([^】]{1,80})】/g, '<span class="hl">$1</span>');
+  h = h.replace(/\n/g, "<br>");
+  el.innerHTML = h;
+}
+async function refreshChips(text){
+  try{
+    const r = await postJSON("/api/unsteady/chips",
+      {text: text, params: collectParams(), summary: summaryText()});
+    if(r && r.chips && r.chips.length){
+      const box = $("#chatChips");
+      box.innerHTML = "";
+      r.chips.slice(0, 3).forEach(t=>{
+        const b = document.createElement("button");
+        b.className = "chip"; b.type = "button"; b.textContent = t;
+        b.addEventListener("click", ()=>{ $("#chatInput").value = t; sendChat(); });
+        box.appendChild(b);
+      });
+      chipIdx = 0;
+    }
+  }catch(e){ /* 保持原有轮换 */ }
+}
+
 function collectParams(){
   return {
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
@@ -761,13 +825,24 @@ async function sendChat(){
       wait.textContent = (r.reply || "已更新工况") +
         (n ? "\n已同步 " + n + " 个参数，正在计算…" : "\n没有识别到可更新的参数。");
       if(n) runCase();
+      refreshChips(text);
     }else if(r.act === "quiz"){
       const items = r.items || [];
-      wait.textContent = items.length
-        ? items.map((it,i)=> "第"+(i+1)+"题：" + it.q + "\n\n答案：" + it.a + "\n解析：" + it.why).join("\n\n———\n\n")
-        : ("出题失败：" + (r.error || "模型未返回题目"));
+      if(items.length){
+        wait.innerHTML = items.map((it,i)=>
+          '<div style="margin-bottom:10px">' +
+          '<span class="qtype">' + escHtml(it.type || "综合") + '</span>' +
+          "<b>第" + (i+1) + "题</b>：" + escHtml(it.q) +
+          '<div style="margin-top:4px">答案：' + escHtml(it.a) + "</div>" +
+          '<div style="color:#5b6b7b">解析：' + escHtml(it.why || "") + "</div></div>"
+        ).join("");
+        refreshChips(text);
+      }else{
+        wait.textContent = "出题失败：" + (r.error || "模型未返回题目");
+      }
     }else{
-      wait.textContent = r.reply || "（没有回答）";
+      renderReply(wait, r.reply || "（没有回答）");
+      refreshChips(text);
     }
   }catch(e){
     wait.textContent = "请求失败：" + e.message;

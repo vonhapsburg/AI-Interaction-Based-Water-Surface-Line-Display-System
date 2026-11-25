@@ -87,7 +87,7 @@ def _upstream_h(b, m, n, i0, Qup, h1, dx):
 def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q0=10.0, Qpeak=30.0, t_peak=3600.0, t_base=7200.0, t_end=None,
         h_dn=None, Nx=121, snap_hours=None, station_fracs=None,
-        safety=0.7, max_steps=200000):
+        safety=0.7, max_steps=60000, steady_tol=None):
     i0 = max(float(i0), 1e-6)
     L = float(L)
     Q0 = float(max(Q0, 1e-6))
@@ -111,18 +111,21 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     # 网格与步长：扩散稳定条件 dt ≤ dx²/(2D)，D ≈ Q/(2 B i0)
     B_n = b + 2.0 * m * h_n0
     D = max(Qpeak, 1.0) / (2.0 * max(B_n, 1e-3) * i0)
+    Nx_req = int(Nx)
     Nx = int(max(60, min(int(Nx), 601)))
+    _cap = max_steps if steady_tol is None else max(max_steps, 150000)
     for _ in range(12):
         dx = L / (Nx - 1)
         c_max = float(np.max(kinematic_speed(b, m, n, i0, np.array([h_n0, h_dn, 3 * h_n0]))))
         dt = min(safety * dx * dx / (2.0 * D), safety * dx / max(c_max, 1e-6), 30.0)
         steps = int(math.ceil(t_end / dt))
-        if steps <= max_steps:
+        if steps <= _cap:
             break
         Nx = max(60, int(Nx * 0.75))
     else:
-        dt = t_end / max_steps
-        steps = max_steps
+        dt = t_end / _cap
+        steps = _cap
+    auto_coarsened = (Nx < Nx_req)
 
     x = np.linspace(0.0, L, Nx)
     stations = sorted({int(round(f * (Nx - 1))) for f in station_fracs})
@@ -169,7 +172,9 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     h[-1] = h_dn
     snap_now(0.0)
 
+    h_check = h.copy()
     for step in range(steps):
+        h_prev = h.copy()
         Qup = Q_up(t)
         h[0] = h_up_of(Qup)
         h[-1] = h_dn
@@ -194,6 +199,11 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         inflow += Qup * dt
         outflow += float(q[-1]) * dt
         t += dt
+        # 只求稳态时：与 500 步前比较，变化足够小才停（避免 dt 小造成假收敛）
+        if steady_tol is not None and step % 500 == 0:
+            if float(np.max(np.abs(h - h_check))) < steady_tol:
+                break
+            h_check = h.copy()
         if step % rec_every == 0 or step == steps - 1:
             snap_now(t)
 
@@ -238,9 +248,12 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         "t": T,
         "t_snap_hours": [round(v / 3600.0, 3) for v in t_snap],
         "h_snap": [[round(float(v), 4) for v in hs] for hs in h_snap],
+        "h_final": [round(float(v), 5) for v in h],
+        "t_final": round(float(t), 1),
         "stations": stations_out,
         "diagnostics": {
             "dt": round(dt, 4), "steps": steps, "dx": round(dx, 2),
+            "nx": Nx, "auto_coarsened": bool(auto_coarsened),
             "max_courant": round(max_c, 3),
             "mass_err": round(float(mass_err), 6),
             "storage_change": round(d_store, 2),
@@ -268,5 +281,5 @@ def steady(b=5.0, m=0.0, n=0.015, i0=0.001, Q=10.0, h_dn=None,
     """跑到稳态，返回 (x, h)。用于与恒定流内核对账。"""
     res = run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q, Qpeak=Q,
               t_peak=3600.0, t_base=3601.0, t_end=hours * 3600.0,
-              h_dn=h_dn, Nx=Nx, snap_hours=(hours,), station_fracs=(0.5,))
-    return np.array(res["x"]), np.array(res["h_snap"][-1])
+              h_dn=h_dn, Nx=Nx, snap_hours=(), station_fracs=(0.5,), steady_tol=1e-4)
+    return np.array(res["x"]), np.array(res["h_final"])

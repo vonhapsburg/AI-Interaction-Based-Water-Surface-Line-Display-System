@@ -935,6 +935,16 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
+        # ---- 猜你想问：按上一句延伸（规则，不花算力）----
+        if path == "/api/unsteady/chips":
+            try:
+                from unsteady import chat as uchat
+                return self._json(uchat.chips(body.get("text") or "",
+                                             body.get("params") or {},
+                                             body.get("summary") or ""))
+            except Exception as e:
+                return self._json({"chips": [], "error": "%s: %s" % (type(e).__name__, e)})
+
         # ---- 非恒定流对话：自然语言改工况 / 解释 / 出题 ----
         if path == "/api/unsteady/chat":
             text = (body.get("text") or "").strip()
@@ -949,8 +959,15 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"act": "set", "params": ex.get("params") or {},
                                        "reply": ex.get("reply") or "已更新工况"})
                 if ex.get("act") == "quiz":
-                    q = uchat.quiz(params, summary)
-                    return self._json({"act": "quiz", "items": q.get("items") or [],
+                    with LOCK:
+                        seen = list(STATE.get("u_quiz_seen") or [])
+                    q = uchat.quiz(params, summary, exclude=seen)
+                    items = q.get("items") or []
+                    with LOCK:
+                        STATE["u_quiz_seen"] = (seen +
+                            [it.get("q") for it in items if it.get("q")])[-12:]
+                    return self._json({"act": "quiz", "items": items,
+                                       "more": bool(ex.get("more")),
                                        "error": q.get("error")})
                 if ex.get("act") == "error":
                     return self._json({"act": "answer", "reply": ex.get("reply")})
@@ -1020,6 +1037,7 @@ class Handler(SimpleHTTPRequestHandler):
                 STATE["texts"] = []
                 STATE["raws"] = []
                 STATE["chat"] = []
+                STATE.pop("u_quiz_seen", None)
                 CACHE["params"] = CACHE["result"] = None
             return self._json({"ok": True, "slots": {}, "missing": missing_of({})})
 

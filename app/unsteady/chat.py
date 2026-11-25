@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""非恒定流的对话通道：自然语言 → 工况参数；以及解释/出题。
+"""非恒定流的对话通道：自然语言 → 工况参数；解释 / 出题 / 追问建议。
 
 与恒定流的 chat 分开，因为要解析的对象不同（过程线参数而不是单点水深）。
 所有数值只来自参数表与内核输出，模型不产生水力数值。
 """
-import json
+import random
 
 from agent import llm
 
@@ -31,21 +31,43 @@ EXTRACT_SYS = """你是«明渠非恒定流»教学系统的助手。把用户�
 1. 只转换用户明确说过的量；没说的一律 -1，禁止猜测。
 2. 时间统一换算成小时，长度统一成 m，流量成 m³/s。
 3. 中文数字要换算（“两小时”→2，“十方”→10）。
-4. 如果用户是在提问（为什么/怎么/是什么/能不能解释）而不是给参数，返回 {"act":"ask"}。
-5. 如果是要求出题/练习，返回 {"act":"quiz"}。
-6. 否则返回 {"act":"set","params":{...},"reply":"一句话确认"}。
+4. 提问（为什么/怎么/是什么/能不能解释）→ 返回 {"act":"ask"}。
+5. 出题/练习 → {"act":"quiz"}；若同时说“换一批/再来几道/不满意/不好” → {"act":"quiz","more":true}。
+6. 否则 {"act":"set","params":{...},"reply":"一句话确认"}。
 只输出 JSON，不要解释。"""
 
 ANSWER_SYS = """你是«明渠非恒定流»教学系统的助手，回答与当前工况相关的问题。
 
 要求：
-1. 口语化、简洁（3–6 句）。
+1. 口语化、简洁（3–6 句），先说结论再说理由。
 2. 只能使用【当前工况】与【最近一次结果】里出现的数字，不编造。
-3. 解释要用力学语言：连续方程、动量方程、特征线 v±c、运动波速 c_k=dQ/dA、
-   洪峰坦化来自扩散项、绳套来自附加比降、回水逆传速度 c−v。
-4. 如果当前用的是扩散波（忽略惯性项），要说明它算不了回水顶托与急流下游扰动；
-   工程模式用全方程时则可以。
-5. 不要输出 JSON。"""
+3. 严禁使用“实测”“实验测得”“测点数据”这类词——本系统没有实测数据。
+   涉及计算结果时写“按本模型计算”，理论估算写“按公式估算”。
+4. 概念题、公式题、给定了条件的计算题：直接依据公式回答，不要说“缺少题面”。
+   只有真的缺关键参数时，才问一个最短的澄清问题（只问一个）。
+5. 【当前模式】已注明：
+   - 若已是工程模式（全方程），不要建议“切到全方程/工程模式”；
+   - 若还是教学模式（扩散波），涉及回水顶托时可建议切工程模式。
+6. 涌波、溃坝、闸门急变：明确说明本系统不支持这类强间断（需激波捕捉），
+   然后给出理论量级与判据，例如 c=√(gA/B)、Ritter 解 h(t)、涌波速度 ≈ √(g h)。
+7. 把最重要的提醒或结论用【】包起来（最多两处）；风险提示用「注意：」开头。
+8. 不要输出 JSON。"""
+
+QUIZ_SYS = """你是水力学习题老师。依据下面的非恒定流算例，出 3 道题并给答案与解析。
+
+硬性要求：
+1. 三题类型必须互不相同，从这五类里选三：概念辨析、数值计算、结果对比、误差与验证、工程应用。
+2. 不得与【已出过的题】重复；若用户说“换一批”，要换类型、换角度。
+3. 只能使用【当前工况】【结果】里出现的数字，不得编造。
+4. 每题的答案要能由给定数据直接算出或直接判断。
+5. 输出严格 JSON：{"items":[{"type":"概念辨析","q":"题面","a":"答案","why":"解析"}]}"""
+
+
+def _mode_label(params):
+    m = (params or {}).get("mode")
+    if m == "engineering":
+        return "工程模式（圣维南全方程，保留惯性项）"
+    return "教学模式（扩散波，忽略惯性项）"
 
 
 def _fmt_params(p):
@@ -61,7 +83,7 @@ def _fmt_params(p):
 
 
 def extract(text, params):
-    """返回 {'act': 'set'|'ask'|'quiz', 'params': {...}, 'reply': str}。"""
+    """返回 {'act': 'set'|'ask'|'quiz', 'params': {...}, 'reply': str, 'more': bool}。"""
     user = "当前工况：%s\n\n用户：%s" % (_fmt_params(params), text)
     r = llm.chat([{"role": "system", "content": EXTRACT_SYS},
                   {"role": "user", "content": user}],
@@ -73,8 +95,10 @@ def extract(text, params):
     except Exception:
         data = {}
     act = (data.get("act") or "").lower()
-    if act in ("ask", "quiz"):
-        return {"act": act}
+    if act == "quiz":
+        return {"act": "quiz", "more": bool(data.get("more"))}
+    if act == "ask":
+        return {"act": "ask"}
     if act != "set":
         return {"act": "ask"}          # 解析失败时按提问处理，不瞎改参数
     patch = {}
@@ -93,29 +117,172 @@ def extract(text, params):
 
 
 def answer(text, params, summary):
-    user = ("【当前工况】%s\n\n【最近一次结果】%s\n\n用户问题：%s"
-            % (_fmt_params(params), summary or "（还没有计算）", text))
+    user = ("【当前模式】%s\n【当前工况】%s\n\n【最近一次结果】%s\n\n用户问题：%s"
+            % (_mode_label(params), _fmt_params(params),
+               summary or "（还没有计算）", text))
     r = llm.chat([{"role": "system", "content": ANSWER_SYS},
                   {"role": "user", "content": user}],
-                 max_tokens=700, temperature=0.4)
+                 max_tokens=700, temperature=0.35)
     if "error" in r:
         return {"reply": "模型通道不可用：%s" % r["error"]}
     return {"reply": r.get("text", "").strip()}
 
 
-def quiz(params, summary):
-    sys_p = ("你是水力学习题老师。依据下面的非恒定流算例，出 3 道题并给答案与解析。"
-             "只能使用给定数字，不得编造。输出严格 JSON："
-             '{"items":[{"q":"题面","a":"答案","why":"解析"}]}')
-    user = "【当前工况】%s\n\n【结果】%s" % (_fmt_params(params), summary or "（还没有计算）")
-    r = llm.chat([{"role": "system", "content": sys_p},
+def _local_quiz(params, summary, exclude):
+    """模型不给力时的兜底题库：只用参数与结果里能解析出的数字。"""
+    import re as _re
+    p = params or {}
+    L = p.get("L"); Q0 = p.get("Q0"); Qp = p.get("Qpeak")
+    tp = p.get("t_peak_h"); tb = p.get("t_base_h"); te = p.get("t_end_h")
+    hn = None; ck = None; pk = None
+    m = _re.search(r"正常水深\s*([0-9.]+)", summary or "")
+    if m: hn = float(m.group(1))
+    m = _re.search(r"c_k\s*=\s*([0-9.]+)", summary or "")
+    if m: ck = float(m.group(1))
+    m = _re.search(r"([0-9.]+)\s*→\s*([0-9.]+)", summary or "")
+    if m: pk = float(m.group(2))
+    out = []
+    def add(t, q, a, w):
+        out.append({"type": t, "q": q, "a": a, "why": w})
+    add("数值计算", "涨水阶段流量平均变化率是多少（m³/s per h）？",
+        "(%s − %s)/%s = %.2f m³/s per h" % (Qp, Q0, tp, (Qp - Q0) / tp)
+        if (Qp and Q0 and tp) else "条件不足",
+        "三角形过程线涨水段斜率 = (Q_peak − Q₀)/t_peak。")
+    add("数值计算", "回落阶段流量平均变化率是多少（m³/s per h）？",
+        "(%s − %s)/(%s − %s) = %.2f m³/s per h" % (Qp, Q0, tb, tp, (Qp - Q0) / (tb - tp))
+        if (Qp and Q0 and tb and tp and tb > tp) else "条件不足",
+        "回落段历时 = t_base − t_peak，斜率取负。")
+    if pk is not None and Qp:
+        add("结果对比", "下游断面峰值相对上游削减了多少（%%）？",
+            "(%.1f − %.1f)/%.1f = %.1f%%" % (Qp, pk, Qp, (Qp - pk) / Qp * 100),
+            "峰值沿程衰减即坦化，削峰率 = (Q_peak − Q_down)/Q_peak。")
+    if L and ck:
+        add("数值计算", "按运动波速估算洪水波传播时间（h）？",
+            "%s/%s ≈ %.2f h" % (L, ck, L / ck / 3600),
+            "传播时间 ≈ L/c_k；实际峰现还要加上坦化造成的滞后。")
+    add("概念辨析", "为什么同一流量在涨水段和落水段对应不同水深？",
+        "涨水段 ∂h/∂t>0，附加比降使同流量下 h 偏小；落水段相反，于是形成绳套。",
+        "h–Q 多值来自非恒定流的附加比降项。")
+    add("误差与验证", "质量守恒误差接近 0 能说明结果正确吗？",
+        "不能。它只说明离散格式守恒；物理正确性要用与恒定解的回归对比来验证。",
+        "格式校验 ≠ 物理验证。")
+    add("概念辨析", "扩散波与全方程最本质的差别是什么？",
+        "扩散波忽略惯性项，是抛物型；全方程保留惯性项，是双曲型，能描述扰动以 v±c 传播。",
+        "惯性项决定扰动传播的有限速度。")
+    add("工程应用", "若下游水位抬高，上游水深会怎样变化？为什么？",
+        "会抬高（回水顶托），扰动沿 v−c 上溯，缓流条件下成立。",
+        "下游水位是缓流的下游控制条件。")
+    # 去掉与已出题重复的，按 exclude 长度轮换起点
+    def norm(t): return "".join((t or "").split())
+    ex = [norm(e) for e in (exclude or [])]
+    pool = [it for it in out if norm(it["q"]) not in ex]
+    if not pool:
+        pool = out
+    k = len(exclude or []) % max(len(pool), 1)
+    pool = pool[k:] + pool[:k]
+    return pool[:3]
+
+
+def quiz(params, summary, exclude=None):
+    """出 3 道题；exclude 是最近出过的题干，避免重复。"""
+    ex = [q for q in (exclude or []) if q][-9:]
+    user = ("【当前工况】%s\n\n【结果】%s\n\n【已出过的题】%s"
+            % (_fmt_params(params), summary or "（还没有计算）",
+               "；".join(ex) if ex else "（无）"))
+    r = llm.chat([{"role": "system", "content": QUIZ_SYS},
                   {"role": "user", "content": user}],
-                 max_tokens=900, temperature=0.3)
+                 max_tokens=900, temperature=random.uniform(0.7, 0.95))
     if "error" in r:
         return {"items": [], "error": r["error"]}
     try:
         data = llm._extract_json(r["text"])
-        items = data.get("items") or []
+        items = list(data.get("items") or [])
     except Exception:
         items = []
-    return {"items": items}
+    for it in items:
+        it.setdefault("type", "综合")
+
+    # 后处理：模型可能无视“别重复”，这里做相似度去重；不足 3 题再补一次
+    def _norm(t):
+        return "".join((t or "").split())
+
+    def _dup(a, b):
+        import difflib
+        return difflib.SequenceMatcher(None, _norm(a), _norm(b)).ratio() > 0.85
+
+    kept = []
+    for it in items:
+        if any(_dup(it.get("q", ""), ex) for ex in ex):
+            continue
+        if any(_dup(it.get("q", ""), k.get("q", "")) for k in kept):
+            continue
+        kept.append(it)
+    if len(kept) < 3:
+        ex2 = ex + [k.get("q", "") for k in kept]
+        user2 = ("【当前工况】%s\n\n【结果】%s\n\n【已出过的题】%s\n\n"
+                 "上面这些题一律不要再出，连改写都不要。"
+                 % (_fmt_params(params), summary or "（还没有计算）",
+                    "；".join(ex2) if ex2 else "（无）"))
+        r2 = llm.chat([{"role": "system", "content": QUIZ_SYS},
+                       {"role": "user", "content": user2}],
+                      max_tokens=900, temperature=0.95)
+        if "text" in r2:
+            try:
+                more = list(llm._extract_json(r2["text"]).get("items") or [])
+            except Exception:
+                more = []
+            for it in more:
+                it.setdefault("type", "综合")
+                if any(_dup(it.get("q", ""), ex2) for ex in ex2):
+                    continue
+                if any(_dup(it.get("q", ""), k.get("q", "")) for k in kept):
+                    continue
+                kept.append(it)
+                if len(kept) >= 3:
+                    break
+    if len(kept) < 3:
+        fill = _local_quiz(params, summary, ex + [k.get("q", "") for k in kept])
+        for it in fill:
+            if len(kept) >= 3:
+                break
+            kept.append(it)
+    return {"items": kept}
+
+
+# ---------------- 猜你想问：按上一句做延伸 ----------------
+_CHIP_MAP = [
+    (("圣维南", "方程", "连续", "动量"), [
+        "特征线 v±c 怎么用？", "扩散波和全方程差在哪？", "为什么保留惯性项？"]),
+    (("绳套", "环", "多值"), [
+        "环向由什么决定？", "为什么涨水段水位偏低？", "绳套面积代表什么？"]),
+    (("洪峰", "削峰", "坦化", "变矮"), [
+        "坦化为什么让峰值变低？", "峰现时间怎么算？", "下游水位会改变削峰吗？"]),
+    (("回水", "顶托", "上溯"), [
+        "回水长度怎么估算？", "缓流为什么能上溯？", "急流能上溯吗？"]),
+    (("特征线", "传播", "波速", "c_k", "ck"), [
+        "v+c 和 v−c 分别指什么？", "临界流时特征线怎样？", "怎么用 Fr 判断？"]),
+    (("涌波", "溃坝", "间断"), [
+        "Ritter 解是什么？", "本系统为什么算不了？", "需要什么方程？"]),
+    (("模式", "全方程", "扩散波", "工程"), [
+        "工程模式能算什么？", "扩散波什么时候够用？", "两者结果差多少？"]),
+    (("出题", "练习", "题"), [
+        "再来一批", "出计算题", "出概念题"]),
+]
+
+_DEFAULT_CHIPS = ["为什么洪峰变矮了？", "绳套为什么是逆时针？", "回水为什么能往上游传？",
+                  "c_k 和峰现时间怎么算？", "扩散波和全方程差在哪？"]
+
+
+def chips(text, params=None, summary=""):
+    """依据上一句生成 3 条追问建议（规则，不花算力）。"""
+    t = text or ""
+    for keys, pool in _CHIP_MAP:
+        if any(k in t for k in keys):
+            return {"chips": list(pool)[:3]}
+    out = []
+    if summary:
+        out.append("这个结果里最值得注意的是什么？")
+    for c in _DEFAULT_CHIPS:
+        if c not in out:
+            out.append(c)
+    return {"chips": out[:3]}
