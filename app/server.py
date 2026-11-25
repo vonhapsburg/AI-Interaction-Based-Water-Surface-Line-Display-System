@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate5"
+BUILD_ID = "2026-11-26-gate6"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -884,6 +884,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 import random as _rd
                 from unsteady import solver as us
+                want_gate = bool(body.get("gate"))
 
                 picked = None
                 for _ in range(40):
@@ -907,7 +908,7 @@ class Handler(SimpleHTTPRequestHandler):
                         continue
                     if hn is None or hn <= 0 or i0 >= ic:
                         continue
-                    mode = _rd.choice(["teaching", "engineering"])
+                    mode = "engineering" if want_gate else _rd.choice(["teaching", "engineering"])
                     if mode == "engineering":
                         hd = round(hn * _rd.uniform(0.85, 1.25), 3)
                         hdn = hd
@@ -927,15 +928,49 @@ class Handler(SimpleHTTPRequestHandler):
                         dt_est = min(max(0.5 * dx / c_est, 5.0), 60.0)
                         if te * 3600.0 / dt_est > 6000:
                             continue
+                    gate = None
+                    if want_gate:
+                        # 按目标水头损失反算终止开度：Δh = (Q/(μ·b_g·a))²/(2g)
+                        b_g = round(b * _rd.uniform(0.8, 1.2), 1)
+                        dhp = _rd.uniform(1.5, 3.5)
+                        a_end = Qpeak / (0.62 * b_g * _m.sqrt(2.0 * 9.81 * dhp))
+                        a_end = round(min(max(a_end, 0.35), 1.6), 2)
+                        a0 = round(a_end * _rd.uniform(1.3, 1.7), 2)
+                        t_close = round(tp * _rd.uniform(0.4, 0.8), 2)
+                        t_ramp = round(max(0.3, min(1.5, tp * _rd.uniform(0.3, 0.8))), 2)
+                        gate = {"on": True, "s": 50, "b_g": b_g, "z_s": 0, "mu": 0.62,
+                                "a0": a0, "a_end": a_end,
+                                "t_close": t_close, "t_ramp": t_ramp}
+                        te = max(te, round(t_close + t_ramp + 2.0, 1))
+                        try:
+                            from unsteady import preissmann as up
+                            rr = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
+                                        t_peak=tp * 3600.0, t_base=tb * 3600.0,
+                                        t_end=min(te, 6.0) * 3600.0, h_dn=hd,
+                                        h_init=np.full(41, hn), Nx=41, gate=gate)
+                            hu_max = max(rr["gate"]["hu"])
+                            pk_down = rr["stations"][-1]["peak_Q"]
+                            if rr["diagnostics"]["newton_failed"] > 0:
+                                continue
+                            if hu_max > max(5.0, 4.5 * hn):
+                                continue
+                            if pk_down > 0.95 * Qpeak:
+                                continue
+                        except Exception:
+                            continue
                     picked = {"mode": mode, "L": L, "b": b, "m": m, "n": n, "i0": i0,
                               "Q0": Q0, "Qpeak": Qpeak, "tp": tp, "tb": tb, "te": te,
                               "Nx": Nx, "hdn": hdn, "h_n": round(float(hn), 4)}
+                    if gate:
+                        picked["gate"] = gate
                     break
                 if picked is None:
                     return self._json({"ok": False, "error": "随机生成失败，请重试"})
                 params = {k: picked[k] for k in
                           ("mode", "L", "b", "m", "n", "i0", "Q0", "Qpeak",
                            "tp", "tb", "te", "Nx", "hdn")}
+                if picked.get("gate"):
+                    params["gate"] = picked["gate"]
                 # 同时给嵌套与平铺，兼容新旧前端
                 out = {"ok": True, "params": params, "h_n": picked.get("h_n")}
                 out.update(params)

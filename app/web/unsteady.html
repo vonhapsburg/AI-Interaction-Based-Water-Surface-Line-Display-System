@@ -246,6 +246,7 @@ window.addEventListener("unhandledrejection", function(e){
           <button class="preset eng" data-p="pre_release">预泄腾库容</button>
           <button class="preset eng" data-p="gate_cut">关闸削峰</button>
           <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
+          <button class="preset rand" id="randGateBtn" type="button">🎲 随机闸门</button>
         </div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
           <b>教学模式</b>：扩散波（忽略惯性项），算得快，用来讲清“一族曲线 / 削峰 / 绳套”。
@@ -1316,11 +1317,11 @@ function showBusy(label){
 function hideBusy(){ $("#busy").style.display = "none"; clearInterval(busyTimer); }
 
 /* ---------------- 随机算例 ---------------- */
-async function randomCase(){
-  const btn = $("#randBtn");
+async function randomCase(useGate){
+  const btn = useGate ? $("#randGateBtn") : $("#randBtn");
   if(btn) btn.disabled = true;
   try{
-    const r = await postJSON("/api/unsteady/random", {});
+    const r = await postJSON("/api/unsteady/random", { gate: !!useGate });
     if(!r.ok){ setMsg("随机算例失败：" + (r.error || ""), "err"); return; }
     const p = r.params || r;
     if(!p || !p.mode){ setMsg("随机算例返回结构异常：" + JSON.stringify(r).slice(0, 120), "err"); return; }
@@ -1332,6 +1333,17 @@ async function randomCase(){
     set("#Q0",p.Q0); set("#Qpeak",p.Qpeak); set("#tp",p.tp); set("#tb",p.tb); set("#te",p.te);
     set("#Nx",p.Nx);
     set("#hdn", p.hdn);
+    const gon = $("#gateOn"), gbox = $("#gateBox");
+    if(p.gate){
+      if(gon) gon.checked = true;
+      if(gbox) gbox.style.display = "";
+      const g = p.gate;
+      set("#gateS", g.s); set("#gateB", g.b_g); set("#gateZ", g.z_s); set("#gateMu", g.mu);
+      set("#gateA0", g.a0); set("#gateA1", g.a_end); set("#gateTc", g.t_close); set("#gateTr", g.t_ramp);
+    }else{
+      if(gon) gon.checked = false;
+      if(gbox) gbox.style.display = "none";
+    }
     refreshHnHint();
     runCase();
   }catch(e){
@@ -1604,7 +1616,8 @@ document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("clic
 ["#L","#b","#m","#n","#i0","#Q0"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", scheduleHint); });
 if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
-if($("#randBtn")) $("#randBtn").addEventListener("click", randomCase);
+if($("#randBtn")) $("#randBtn").addEventListener("click", ()=>randomCase(false));
+if($("#randGateBtn")) $("#randGateBtn").addEventListener("click", ()=>randomCase(true));
 bindFamilyZoom();
 if($("#gateOn")) $("#gateOn").addEventListener("change", e=>{
   const box = $("#gateBox");

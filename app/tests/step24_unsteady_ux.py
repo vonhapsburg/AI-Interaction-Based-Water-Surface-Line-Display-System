@@ -75,6 +75,7 @@ def main():
         check("闸门预设算例", "预泄腾库容" in html and "关闸削峰" in html)
         check("闸门图有悬停读数", 'id="ovlGate"' in html and 'registerHover("cGate"' in html)
         check("闸门图有图例与刻度", "最高闸上" in html and "水位 / 开度 (m)" in html)
+        check("两个随机按钮", 'id="randBtn"' in html and 'id="randGateBtn"' in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)
