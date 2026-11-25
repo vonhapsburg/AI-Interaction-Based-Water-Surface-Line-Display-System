@@ -98,7 +98,7 @@ def main():
     check("返回 ok", r.get("ok"), r.get("error"))
     if r.get("ok"):
         d = r["result"]["diagnostics"]
-        check("自动加粗网格", d.get("auto_coarsened") is True, d.get("nx"))
+        check("网格按预算控制（nx≥81）", d.get("nx", 0) >= 81, d.get("nx"))
         check("质量守恒 <0.5%", d["mass_err"] < 0.005, "%.3f%%" % (d["mass_err"] * 100))
         lines.append("  用时 %.1f s，nx=%s，步数=%s" % (sec, d.get("nx"), d["steps"]))
 

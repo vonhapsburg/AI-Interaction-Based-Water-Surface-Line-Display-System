@@ -84,7 +84,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     c_ref = math.sqrt(G * max(h_n0, 0.05))
     dt_given = dt is not None
     if dt is None:
-        dt = float(min(max(0.5 * dx / max(c_ref, 0.1), 5.0), 60.0))
+        dt = float(min(max(3.0 * dx / max(c_ref, 0.1), 15.0), 90.0))
     steps = int(math.ceil(t_end / dt))
 
     # 耗时控制：每次 Newton 要解 (2N)³ 的方程组，N 大时极慢。
@@ -93,7 +93,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     _budget = cost_budget
     while Nx > 81:
         _dx = L / (Nx - 1)
-        _dt = dt if dt is not None else float(min(max(0.5 * _dx / max(c_ref, 0.1), 5.0), 60.0))
+        _dt = dt if dt is not None else float(min(max(3.0 * _dx / max(c_ref, 0.1), 15.0), 90.0))
         _steps = int(math.ceil(t_end / _dt))
         if _steps * (2 * Nx) ** 3 <= _budget:
             break
@@ -107,7 +107,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             h = np.interp(x, np.linspace(0.0, L, len(h)), h)
         Q = np.full(Nx, Q0)
         if not dt_given:
-            dt = float(min(max(0.5 * dx / max(c_ref, 0.1), 5.0), 60.0))
+            dt = float(min(max(3.0 * dx / max(c_ref, 0.1), 15.0), 90.0))
         steps = int(math.ceil(t_end / dt))
 
     auto_coarsened = bool(_auto or Nx < Nx_req)
