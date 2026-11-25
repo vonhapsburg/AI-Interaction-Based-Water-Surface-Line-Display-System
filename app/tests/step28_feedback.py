@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""本轮 8 条反馈的验收：出题随机、关键标红、上下文猜你想问、大工况耗时。"""
+"""本轮反馈的验收：出题随机、关键标红、上下文猜你想问、大工况耗时、精度开关。"""
 import json
 import os
 import time
@@ -51,10 +51,11 @@ def main():
     lines.append("=== 前端（问题 2/3）===")
     check("回复渲染函数", "function renderReply" in html)
     check("重点标红样式", 'class="hl"' in html and ".msg .hl{" in html)
-    check("注意块样式", "class=\"warn\"" in html)
+    check("注意块样式", 'class="warn"' in html)
     check("上下文猜你想问", "refreshChips" in html and "/api/unsteady/chips" in html)
     check("① 图包络带", "包络带" in html)
     check("绳套标签有引线", "setLineDash([3,2])" in html)
+    check("每张图独立兜底", "safe(\"family\"" in html)
 
     lines.append("")
     lines.append("=== 猜你想问按上一句延伸 ===")
@@ -72,7 +73,7 @@ def main():
     P = {"L": 3000, "b": 5, "Q0": 10, "Qpeak": 30,
          "t_peak_h": 1, "t_base_h": 2, "t_end_h": 6, "mode": "engineering"}
     S = "求解器=preissmann；正常水深 1.124 m；断面峰值 30→27；c_k=3.25"
-    post("/api/reset", {})   # 清掉上一轮测试留下的“已出过的题”
+    post("/api/reset", {})   # 清掉上一轮留下的“已出过的题”
     q1, _ = post("/api/unsteady/chat", {"text": "出几道题", "params": P, "summary": S})
     q2, _ = post("/api/unsteady/chat", {"text": "换一批", "params": P, "summary": S})
     i1 = [it.get("q") for it in (q1.get("items") or [])]
@@ -96,6 +97,21 @@ def main():
         check("自动加粗网格", d.get("auto_coarsened") is True, d.get("nx"))
         check("质量守恒 <0.5%", d["mass_err"] < 0.005, "%.3f%%" % (d["mass_err"] * 100))
         lines.append("  用时 %.1f s，nx=%s，步数=%s" % (sec, d.get("nx"), d["steps"]))
+
+    lines.append("")
+    lines.append("=== 精度优先开关（问题 7 的补充）===")
+    check("页面有精度优先开关", 'id="precise"' in html and "precision:" in html)
+    bigd = dict(big, model="diffusion")
+    rd, secd = post("/api/unsteady/run", bigd)
+    r2, sec2 = post("/api/unsteady/run", dict(bigd, precision=True))
+    check("精度模式返回 ok", r2.get("ok"), r2.get("error"))
+    if rd.get("ok") and r2.get("ok"):
+        s1 = rd["result"]["diagnostics"]["steps"]
+        s2 = r2["result"]["diagnostics"]["steps"]
+        check("精度模式步数更多（网格更细）", s2 > s1, "%d vs %d" % (s1, s2))
+        check("精度模式仍然守时（<20 s）", sec2 < 20, "%.1f s" % sec2)
+        lines.append("  默认 %d 步 / %.1f s，精度优先 %d 步 / %.1f s"
+                     % (s1, secd, s2, sec2))
 
     lines.append("")
     lines.append("=" * 60)

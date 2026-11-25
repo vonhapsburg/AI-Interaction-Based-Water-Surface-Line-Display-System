@@ -152,6 +152,9 @@
              border-left:3px solid #b23c4a;color:#8a2b34;border-radius:4px;}
   .msg .qtype{display:inline-block;font-size:10.5px;color:#2e6da4;background:#e9f1f9;
               border-radius:99px;padding:0 6px;margin-right:4px;}
+  .preciseRow{display:flex;align-items:center;gap:6px;font-size:12px;color:#5b6b7b;
+               margin:8px 0 2px;}
+  .preciseRow input{width:auto;margin:0;}
 </style>
 </head>
 <body>
@@ -237,6 +240,9 @@ window.addEventListener("unhandledrejection", function(e){
           <div class="field"><label>下游水位 (m)</label><input id="hdn" type="text" value="auto" title="auto = 正常水深"><div class="hintline" id="hnHint">auto = 正在取正常水深…</div></div>
           <div class="field"><label>网格数 Nx</label><input id="Nx" type="number" step="10" value="121"></div>
         </div>
+        <label class="preciseRow">
+          <input type="checkbox" id="precise"> 精度优先（网格更细、更慢；默认自动加速）
+        </label>
         <button id="run">计算</button>
         <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>
         <div class="bwbox" id="bwBox" style="display:none;"><div class="t" id="bwText"></div><canvas id="cBw"></canvas></div>
@@ -410,6 +416,7 @@ async function runCase(){
     t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
     t_end: (+$("#te").value) * 3600, Nx: +$("#Nx").value,
     dense: true, frames: 41,
+    precision: !!($("#precise") && $("#precise").checked),
     h_dn: $("#hdn").value.trim() === "auto" ? null : +$("#hdn").value
   };
   try{
@@ -706,6 +713,9 @@ function drawDiag(R){
       "（仅宽浅矩形接近 5/3；梯形需数值求 dQ/dh）<br>" +
       "网格 Δx=" + d.dx + " m，Δt=" + d.dt + " s，库朗按 |v|+c 估计 " +
       (d.max_courant == null ? "—" : d.max_courant.toFixed(3));
+  }
+  if(d && d.auto_coarsened){
+    $("#dMeta").innerHTML += "<br><b style='color:#b06a1f'>已自动加粗网格以控制耗时（nx=" + d.nx + "）；需要精确数值请勾选「精度优先」。</b>";
   }
   const tb = $("#peakTable"); tb.innerHTML = "";
   R.stations.forEach(st=>{

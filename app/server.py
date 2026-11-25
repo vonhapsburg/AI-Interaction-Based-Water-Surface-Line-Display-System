@@ -611,6 +611,7 @@ class Handler(SimpleHTTPRequestHandler):
                 h_dn_body = body.get("h_dn")
                 h_dn = None if h_dn_body in (None, "", "auto") else float(h_dn_body)
                 model = (body.get("model") or "diffusion").lower()
+                precise = bool(body.get("precision"))
                 # 时间轴：dense=true 时返回 40+ 帧，供页面滑块逐帧查看
                 snap_hours = None
                 if body.get("dense"):
@@ -646,7 +647,8 @@ class Handler(SimpleHTTPRequestHandler):
                     res = us.run(
                         L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                         t_peak=tp, t_base=tb, t_end=te,
-                        h_dn=h_dn, Nx=Nx, snap_hours=snap_hours)
+                        h_dn=h_dn, Nx=Nx, snap_hours=snap_hours,
+                        max_steps=(150000 if precise else 60000))
                 return self._json({"ok": True, "result": res})
             except Exception as e:
                 return self._json({"ok": False,
@@ -954,7 +956,11 @@ class Handler(SimpleHTTPRequestHandler):
                 from unsteady import chat as uchat
                 params = body.get("params") or {}
                 summary = body.get("summary") or ""
-                ex = uchat.extract(text, params)
+                # “换一批/再来几道”直接判为出题，避免模型分类不稳定
+                if re.search(r"换一批|再来几|再出几|不满意|太简单|太难|换几道", text):
+                    ex = {"act": "quiz", "more": True}
+                else:
+                    ex = uchat.extract(text, params)
                 if ex.get("act") == "set":
                     return self._json({"act": "set", "params": ex.get("params") or {},
                                        "reply": ex.get("reply") or "已更新工况"})

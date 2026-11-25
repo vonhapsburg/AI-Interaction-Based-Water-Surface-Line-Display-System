@@ -44,7 +44,8 @@ def _sf(n, Q, A, R):
 def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q0=10.0, Qpeak=30.0, t_peak=3600.0, t_base=7200.0, t_end=12 * 3600.0,
         h_dn=None, h_init=None, Nx=81, theta=0.7, psi=0.5, dt=None,
-        snap_hours=None, station_fracs=None, max_newton=6, tol=1e-7):
+        snap_hours=None, station_fracs=None, max_newton=6, tol=1e-7,
+        cost_budget=1.2e11):
     """跑一次全方程非恒定演进（缓流）。
 
     返回结构与扩散波一致，便于同一页面共用绘图。
@@ -89,7 +90,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     # 耗时控制：每次 Newton 要解 (2N)³ 的方程组，N 大时极慢。
     # 用 steps×(2N)³ 估代价，超过预算就自动加粗网格（不低于 81）。
     _auto = False
-    _budget = 1.2e11
+    _budget = cost_budget
     while Nx > 81:
         _dx = L / (Nx - 1)
         _dt = dt if dt is not None else float(min(max(0.5 * _dx / max(c_ref, 0.1), 5.0), 60.0))
