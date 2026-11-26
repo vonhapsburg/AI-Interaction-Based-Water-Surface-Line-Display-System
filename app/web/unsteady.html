@@ -73,7 +73,14 @@
   .vtab{padding:5px 16px;border-radius:8px 8px 0 0;background:#eef3f8;color:#41556b;
         font-size:12.5px;cursor:pointer;border:1px solid var(--line);border-bottom:0;}
   .vtab.on{background:#fff;color:var(--accent);font-weight:600;}
-  #scheduleView{max-width:1500px;margin:0 auto;padding:0 14px 14px;}
+  #scheduleView{max-width:1180px;margin:0 auto;padding:0 14px 14px;}
+  .schedNote{font-size:12px;color:#5b6b7b;background:#f4f7fa;border:1px solid #e7edf3;
+             border-radius:8px;padding:7px 10px;margin:10px 0 0;}
+  .schedGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+  @media(max-width:1100px){ .schedGrid{grid-template-columns:1fr;} }
+  .actRow{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:10px;}
+  .actRow button{width:auto;margin:0;padding:7px 18px;}
+  .actRow .miniBtn{padding:7px 12px;}
   #cmpTable{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
   #cmpTable th,#cmpTable td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:right;}
   #cmpTable th:first-child,#cmpTable td:first-child{text-align:left;}
@@ -263,10 +270,12 @@ window.addEventListener("unhandledrejection", function(e){
   <span class="vtab" id="tabSchedule">调度</span>
 </div>
 <section id="scheduleView" style="display:none;">
+  <div class="schedNote">调度计算固定使用工程模式（全方程）；参数与「演进」页共用，切换标签不会重置。</div>
   <section class="card">
     <div class="card-h">多轮调度会话 <span class="tag">记住约束与推荐，可回放</span></div>
     <div class="card-b">
       <div id="schedLog" class="schedLog"></div>
+      <div class="hint" id="schedEmpty">还没有对话。第一句建议说：“闸上不能超过6米，尽量削峰”。</div>
       <div class="chat-input" style="border-top:1px solid var(--line2);padding:8px 0 0;">
         <input id="schedText" placeholder="例如：闸上不能超过6米，尽量削峰 / 再保守一点 / 为什么推荐它 / 关到0.5呢">
         <button id="schedSend" type="button">发送</button>
@@ -276,7 +285,8 @@ window.addEventListener("unhandledrejection", function(e){
     </div>
   </section>
 
-  <section class="card" style="margin-top:12px;">
+  <div class="schedGrid">
+  <section class="card">
     <div class="card-h">AI 调度参谋 <span class="tag">提候选 · 读结果 · 讲人话</span></div>
     <div class="card-b">
       <div class="grid2">
@@ -285,13 +295,13 @@ window.addEventListener("unhandledrejection", function(e){
         <div class="field"><label>闸上允许最高 (m，可留空)</label>
           <input id="aiMaxStage" type="number" step="0.1" placeholder="如 6.0"></div>
       </div>
-      <button id="aiBtn" type="button">让 AI 给方案</button>
+      <div class="actRow"><button id="aiBtn" type="button">让 AI 提候选并解释</button></div>
       <div class="hint" id="aiMsg">AI 只提参数与解释，所有数值来自求解器；“可行/不可行”按你给的闸上水位判断。</div>
       <div id="aiOut" style="margin-top:10px;"></div>
     </div>
   </section>
 
-  <section class="card" style="margin-top:12px;">
+  <section class="card">
     <div class="card-h">枚举寻优与 Pareto <span class="tag">0.3–1.1 m 网格 + 扰动校核</span></div>
     <div class="card-b">
       <div class="grid2">
@@ -300,12 +310,14 @@ window.addEventListener("unhandledrejection", function(e){
         <div class="field"><label>候选数</label>
           <select id="optSteps"><option>5</option><option selected>7</option><option>9</option></select></div>
       </div>
-      <button id="optBtn" type="button">开始寻优</button>
+      <div class="actRow"><button id="optBtn" type="button">开始枚举寻优</button></div>
       <div class="hint" id="optMsg">在 0.3–1.1 m 内枚举开度，按闸上约束筛选，给出 Pareto 与推荐。</div>
       <div id="optOut"></div>
       <canvas id="cPareto" height="280" style="margin-top:10px;display:none;"></canvas>
     </div>
   </section>
+
+  </div>
 
   <section class="card" style="margin-top:12px;">
     <div class="card-h">方案对比 <span class="tag">多个开度方案，一次算完</span></div>
@@ -316,7 +328,7 @@ window.addEventListener("unhandledrejection", function(e){
         <div class="field"><label>调度意图（可选）</label>
           <input id="cmpText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
       </div>
-      <button id="cmpBtn" type="button">开始对比</button>
+      <div class="actRow"><button id="cmpBtn" type="button">开始对比</button></div>
       <div class="hint" id="cmpMsg">基准为“不关闸”；方案沿用当前闸位/闸宽/关闸时刻，只改终止开度。</div>
       <table id="cmpTable" style="display:none;">
         <thead><tr><th>方案</th><th>下游峰值 (m³/s)</th><th>削峰率</th><th>闸上最高 (m)</th><th>可行</th><th>用时</th></tr></thead>
@@ -1162,6 +1174,8 @@ function applyGatePatch(g){
 function switchView(v){
   const ev = document.querySelector(".wrap");
   const sv = $("#scheduleView");
+  const mb = document.querySelector(".modebar");
+  if(mb) mb.style.display = (v === "schedule") ? "none" : "";
   if(ev) ev.style.display = (v === "evolve") ? "" : "none";
   if(sv) sv.style.display = (v === "schedule") ? "" : "none";
   $("#tabEvolve").classList.toggle("on", v === "evolve");
@@ -1244,6 +1258,8 @@ function addSchedLine(who, text){
   d.className = "schedLine " + (who === "me" ? "me" : "sys");
   d.textContent = text;
   box.appendChild(d);
+  const empty = $("#schedEmpty");
+  if(empty) empty.style.display = "none";
   box.scrollTop = box.scrollHeight;
 }
 async function schedSend(){
@@ -1330,6 +1346,14 @@ async function runOpt(){
   }
 }
 if($("#optBtn")) $("#optBtn").addEventListener("click", runOpt);
+["aiMaxStage","optMax"].forEach((id, i, arr)=>{
+  const el = $("#" + id);
+  if(!el) return;
+  el.addEventListener("input", ()=>{
+    const other = $("#" + arr[1 - i]);
+    if(other && other.value !== el.value) other.value = el.value;
+  });
+});
 
 function renderOpt(r){
   const rows = r.candidates || [];
