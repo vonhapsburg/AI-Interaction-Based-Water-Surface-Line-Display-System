@@ -147,6 +147,11 @@ check("drawCharChart（急流）", () => {
 check("drawBackwater", () => {
   sandbox.drawBackwater({ x, h: f1, hn: h0 });
 });
+check("switchSchedMode", () => { sandbox.switchSchedMode("opt"); });
+check("setPlanSummary", () => {
+  sandbox.setPlanSummary({name:"方案A", a_end:0.6, peak:21.0, cut:0.25,
+                          hmax:5.6, feasible:true}, {max_stage: 6.0, source: "test"});
+});
 check("renderReply（【】标红与注意块）", () => {
   const el = makeEl();
   sandbox.renderReply(el, "结论是【缓流可上溯】。\n注意：急流时不行。");

@@ -97,6 +97,10 @@ def main():
         check("调度页双栏布局", "schedGrid" in html and "actRow" in html)
         check("调度固定工程模式说明", "schedNote" in html)
         check("会话可新建", 'id="schedNew"' in html and "调度视图" in html)
+        check("三种调度模式合并", 'data-sm="ai"' in html and 'id="panelOpt"' in html
+              and 'id="panelCmp"' in html)
+        check("共享约束与当前方案卡", 'id="sharedMax"' in html and 'id="planInfo"' in html)
+        check("表格单位统一", "下游峰值 (m³/s)" in html and "削峰率 (%)" in html)
         check("无定时覆盖建议", "setInterval(renderChips" not in html)
 
     if isinstance(html, str):

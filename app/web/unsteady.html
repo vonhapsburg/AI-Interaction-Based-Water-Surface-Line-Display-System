@@ -81,6 +81,17 @@
   .actRow{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:10px;}
   .actRow button{width:auto;margin:0;padding:7px 18px;}
   .actRow .miniBtn{padding:7px 12px;}
+  .schedTop{display:grid;grid-template-columns:1.35fr 1fr;gap:12px;margin-top:12px;}
+  @media(max-width:1100px){ .schedTop{grid-template-columns:1fr;} }
+  .modeTabs{display:inline-flex;gap:4px;margin-left:auto;}
+  .modeTab{width:auto;margin:0;padding:3px 10px;font-size:12px;background:#eef3f8;
+           color:#41556b;border:1px solid #dbe6f1;border-radius:6px;}
+  .modeTab.on{background:#2e6da4;color:#fff;border-color:#2e6da4;}
+  .tableWrap{overflow-x:auto;}
+  .tableWrap table{min-width:520px;}
+  .planGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin-top:8px;}
+  .planGrid .pv{font-size:14px;font-weight:600;color:#1f4e79;}
+  .planGrid .pk{font-size:11px;color:#8b98a6;}
   #cmpTable{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
   #cmpTable th,#cmpTable td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:right;}
   #cmpTable th:first-child,#cmpTable td:first-child{text-align:left;}
@@ -270,75 +281,85 @@ window.addEventListener("unhandledrejection", function(e){
   <span class="vtab" id="tabSchedule">调度</span>
 </div>
 <section id="scheduleView" style="display:none;">
-  <div class="schedNote">调度计算固定使用工程模式（全方程）；参数与「演进」页共用，切换标签不会重置。</div>
-  <section class="card">
-    <div class="card-h">多轮调度会话 <span class="tag">记住约束与推荐，可回放</span></div>
-    <div class="card-b">
-      <div id="schedLog" class="schedLog"></div>
-      <div class="hint" id="schedEmpty">还没有对话。第一句建议说：“闸上不能超过6米，尽量削峰”。</div>
-      <div class="chat-input" style="border-top:1px solid var(--line2);padding:8px 0 0;">
-        <input id="schedText" placeholder="例如：闸上不能超过6米，尽量削峰 / 再保守一点 / 为什么推荐它 / 关到0.5呢">
-        <button id="schedSend" type="button">发送</button>
-        <button id="schedReplay" type="button" class="miniBtn">回放</button>
-        <button id="schedNew" type="button" class="miniBtn">新建会话</button>
-      </div>
-      <div class="hint" id="schedMsg">首轮会做一次寻优（约 5–8 s），之后每轮只重算必要部分。</div>
-    </div>
-  </section>
+  <div class="schedNote">调度计算固定使用工程模式（全方程）；参数与「演进」页共用，切换标签不会重置。会话保存在服务内存，重启服务后清空。</div>
 
-  <div class="schedGrid">
-  <section class="card">
-    <div class="card-h">AI 调度参谋 <span class="tag">提候选 · 读结果 · 讲人话</span></div>
-    <div class="card-b">
-      <div class="grid2">
-        <div class="field"><label>调度要求</label>
-          <input id="aiText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
-        <div class="field"><label>闸上允许最高 (m，可留空)</label>
-          <input id="aiMaxStage" type="number" step="0.1" placeholder="如 6.0"></div>
+  <div class="schedTop">
+    <section class="card">
+      <div class="card-h">多轮调度会话 <span class="tag">记住约束与推荐，可回放</span></div>
+      <div class="card-b">
+        <div id="schedLog" class="schedLog"></div>
+        <div class="hint" id="schedEmpty">还没有对话。第一句建议说：“闸上不能超过6米，尽量削峰”。</div>
+        <div class="chat-input" style="border-top:1px solid var(--line2);padding:8px 0 0;">
+          <input id="schedText" placeholder="例如：闸上不能超过6米，尽量削峰 / 再保守一点 / 为什么推荐它 / 关到0.5呢">
+          <button id="schedSend" type="button">发送</button>
+          <button id="schedReplay" type="button" class="miniBtn">回放</button>
+          <button id="schedNew" type="button" class="miniBtn">新建会话</button>
+        </div>
+        <div class="hint" id="schedMsg">首轮约 5–8 s；之后每轮只重算必要部分。</div>
       </div>
-      <div class="actRow"><button id="aiBtn" type="button">让 AI 提候选并解释</button></div>
-      <div class="hint" id="aiMsg">AI 只提参数与解释，所有数值来自求解器；“可行/不可行”按你给的闸上水位判断。</div>
-      <div id="aiOut" style="margin-top:10px;"></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="card">
-    <div class="card-h">枚举寻优与 Pareto <span class="tag">0.3–1.1 m 网格 + 扰动校核</span></div>
-    <div class="card-b">
-      <div class="grid2">
-        <div class="field"><label>闸上允许最高 (m)</label>
-          <input id="optMax" type="number" step="0.1" value="6.0"></div>
-        <div class="field"><label>候选数</label>
-          <select id="optSteps"><option>5</option><option selected>7</option><option>9</option></select></div>
+    <section class="card" id="planCard">
+      <div class="card-h">当前方案 <span class="tag">最近一次计算的推荐</span></div>
+      <div class="card-b" id="planBody">
+        <div class="hint" id="planEmpty">还没有推荐方案。用下面的「调度方案」生成，或在左侧会话里说一句话。</div>
+        <div id="planInfo" style="display:none;"></div>
       </div>
-      <div class="actRow"><button id="optBtn" type="button">开始枚举寻优</button></div>
-      <div class="hint" id="optMsg">在 0.3–1.1 m 内枚举开度，按闸上约束筛选，给出 Pareto 与推荐。</div>
-      <div id="optOut"></div>
-      <canvas id="cPareto" height="280" style="margin-top:10px;display:none;"></canvas>
-    </div>
-  </section>
-
+    </section>
   </div>
 
-  <section class="card" style="margin-top:12px;">
-    <div class="card-h">方案对比 <span class="tag">多个开度方案，一次算完</span></div>
+  <section class="card" style="margin-top:12px;" id="modeCard">
+    <div class="card-h">调度方案
+      <span class="modeTabs">
+        <button type="button" class="modeTab on" data-sm="ai">AI 参谋</button>
+        <button type="button" class="modeTab" data-sm="opt">枚举寻优</button>
+        <button type="button" class="modeTab" data-sm="cmp">手动对比</button>
+      </span>
+    </div>
     <div class="card-b">
-      <div class="grid2">
-        <div class="field"><label>方案：终止开度（逗号分隔）</label>
-          <input id="cmpAs" type="text" value="0.6, 0.4"></div>
-        <div class="field"><label>调度意图（可选）</label>
-          <input id="cmpText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
+      <div class="grid2" style="margin-bottom:8px;">
+        <div class="field"><label>闸上允许最高 (m)</label>
+          <input id="sharedMax" type="number" step="0.1" value="6.0"></div>
+        <div class="field"><label>候选数（枚举用）</label>
+          <select id="optSteps"><option>5</option><option selected>7</option><option>9</option></select></div>
       </div>
-      <div class="actRow"><button id="cmpBtn" type="button">开始对比</button></div>
-      <div class="hint" id="cmpMsg">基准为“不关闸”；方案沿用当前闸位/闸宽/关闸时刻，只改终止开度。</div>
-      <table id="cmpTable" style="display:none;">
-        <thead><tr><th>方案</th><th>下游峰值 (m³/s)</th><th>削峰率</th><th>闸上最高 (m)</th><th>可行</th><th>用时</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <canvas id="cCmp" height="300" style="margin-top:10px;"></canvas>
+
+      <div class="schedPanel" id="panelAI">
+        <div class="field"><label>调度要求</label>
+          <input id="aiText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
+        <div class="actRow"><button id="aiBtn" type="button">让 AI 提候选并解释</button></div>
+        <div class="hint" id="aiMsg">AI 只提参数与解释，所有数值来自求解器；“可行/不可行”按你给的闸上水位判断。</div>
+        <div id="aiOut" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="schedPanel" id="panelOpt" style="display:none;">
+        <div class="actRow"><button id="optBtn" type="button">开始枚举寻优</button></div>
+        <div class="hint" id="optMsg">在 0.3–1.1 m 内枚举开度，按闸上约束筛选，给出 Pareto 与推荐。</div>
+        <div id="optOut"></div>
+        <canvas id="cPareto" height="280" style="margin-top:10px;display:none;"></canvas>
+      </div>
+
+      <div class="schedPanel" id="panelCmp" style="display:none;">
+        <div class="grid2">
+          <div class="field"><label>方案：终止开度（逗号分隔）</label>
+            <input id="cmpAs" type="text" value="0.6, 0.4"></div>
+          <div class="field"><label>调度意图（可选）</label>
+            <input id="cmpText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
+        </div>
+        <div class="actRow"><button id="cmpBtn" type="button">开始对比</button></div>
+        <div class="hint" id="cmpMsg">基准为“不关闸”；方案沿用当前闸位/闸宽/关闸时刻，只改终止开度。</div>
+        <div class="tableWrap">
+          <table id="cmpTable" style="display:none;">
+            <thead><tr><th>方案</th><th>下游峰值 (m³/s)</th><th>削峰率 (%)</th><th>闸上最高 (m)</th><th>可行</th><th>用时 (ms)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <canvas id="cCmp" height="300" style="margin-top:10px;"></canvas>
+      </div>
     </div>
   </section>
 </section>
+
 <div class="wrap">
     <aside>
     <section class="card" id="chatCard">
@@ -1239,7 +1260,7 @@ async function runAI(){
   if(btn){ btn.disabled = true; btn.textContent = "参谋计算中…"; }
   $("#aiOut").innerHTML = '<div class="hint">粗扫候选 → AI 精修 → 求解器裁决…（约 8–15 s）</div>';
   try{
-    const ms = $("#aiMaxStage").value.trim();
+    const ms = $("#sharedMax").value.trim();
     const r = await postJSON("/api/unsteady/ai_schedule", {
       L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
       i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
@@ -1259,6 +1280,66 @@ async function runAI(){
   }
 }
 if($("#aiBtn")) $("#aiBtn").addEventListener("click", runAI);
+
+let lastPlan = null, lastReport = "";
+function setPlanSummary(rec, extra){
+  lastPlan = rec || null;
+  if(rec && extra && extra.report) lastReport = extra.report;
+  const empty = $("#planEmpty"), info = $("#planInfo");
+  if(!empty || !info) return;
+  if(!rec){
+    empty.style.display = "";
+    info.style.display = "none";
+    return;
+  }
+  empty.style.display = "none";
+  info.style.display = "";
+  const feas = (rec.feasible === false) ? '<span class="badTag">不可行</span>'
+             : '<span class="okTag">可行</span>';
+  info.innerHTML =
+    '<div style="font-size:13px;"><b>' + escHtml(rec.name || "推荐") + '</b>　开度 ' +
+    (+rec.a_end).toFixed(2) + ' m　' + feas + '</div>' +
+    '<div class="planGrid">' +
+      '<div><div class="pk">下游峰值</div><div class="pv">' + (+rec.peak).toFixed(2) + ' m³/s</div></div>' +
+      '<div><div class="pk">削峰率</div><div class="pv">' + ((+rec.cut) * 100).toFixed(1) + ' %</div></div>' +
+      '<div><div class="pk">闸上最高</div><div class="pv">' + (+rec.hmax).toFixed(2) + ' m</div></div>' +
+      '<div><div class="pk">约束</div><div class="pv">≤ ' +
+        (extra && extra.max_stage != null ? (+extra.max_stage).toFixed(1) : "—") + ' m</div></div>' +
+    '</div>' +
+    '<div class="hint" style="margin-top:6px;">来源：' + escHtml((extra && extra.source) || "调度") +
+    (extra && extra.report ? "；建议书可下载" : "") + '</div>' +
+    '<div class="actRow"><button type="button" id="planApply">应用到演进页</button>' +
+    (extra && extra.report ? '<button type="button" class="miniBtn" id="planReport">下载建议书</button>' : '') +
+    '</div>';
+  const ap = $("#planApply");
+  if(ap) ap.onclick = ()=>{
+    const gon = $("#gateOn");
+    if(gon && !gon.checked) gon.checked = true;
+    const gbox = $("#gateBox"); if(gbox) gbox.style.display = "";
+    $("#gateA1").value = (+rec.a_end).toFixed(2);
+    switchView("evolve");
+    runCase();
+  };
+  const rp = $("#planReport");
+  if(rp) rp.onclick = ()=>{
+    const blob = new Blob([lastReport || ""], {type: "text/markdown;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "调度建议书.md";
+    a.click();
+  };
+}
+
+function switchSchedMode(m){
+  document.querySelectorAll(".modeTab").forEach(b=>b.classList.toggle("on", b.dataset.sm === m));
+  ["ai","opt","cmp"].forEach(k=>{
+    const p = $("#panel" + k.toUpperCase());
+    if(p) p.style.display = (k === m) ? "" : "none";
+  });
+}
+document.querySelectorAll(".modeTab").forEach(b=>{
+  b.addEventListener("click", ()=>switchSchedMode(b.dataset.sm));
+});
 
 let schedSid = null;
 function addSchedLine(who, text){
@@ -1282,7 +1363,7 @@ async function schedSend(){
   try{
     let r;
     if(!schedSid){
-      const ms = $("#optMax").value.trim();
+      const ms = $("#sharedMax").value.trim();
       r = await postJSON("/api/unsteady/schedule/session", {
         L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
         i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
@@ -1350,7 +1431,7 @@ async function runOpt(){
       t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
       t_end: (+$("#te").value) * 3600, Nx: 61,
       h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
-      gate: currentGate(), max_stage: +$("#optMax").value,
+      gate: currentGate(), max_stage: +$("#sharedMax").value,
       steps: +$("#optSteps").value
     });
     if(!r.ok){ $("#optOut").textContent = "寻优失败：" + (r.error || ""); return; }
@@ -1362,22 +1443,15 @@ async function runOpt(){
   }
 }
 if($("#optBtn")) $("#optBtn").addEventListener("click", runOpt);
-["aiMaxStage","optMax"].forEach((id, i, arr)=>{
-  const el = $("#" + id);
-  if(!el) return;
-  el.addEventListener("input", ()=>{
-    const other = $("#" + arr[1 - i]);
-    if(other && other.value !== el.value) other.value = el.value;
-  });
-});
+
 
 function renderOpt(r){
   const rows = r.candidates || [];
   let html = '<div class="hint">约束：闸上 ≤ ' + r.max_stage + ' m；基准峰值 ' +
     r.reference_peak + ' m³/s；● = Pareto 前沿' +
     (r.fallback_used ? '（AI 解释未参与或不可追溯，已用模板）' : '') + '</div>';
-  html += '<table id="aiTable"><thead><tr><th>方案</th><th>开度</th><th>下游峰值</th>' +
-    '<th>削峰率</th><th>闸上最高</th><th>可行</th><th>Pareto</th></tr></thead><tbody>';
+  html += '<div class="tableWrap"><table id="aiTable"><thead><tr><th>方案</th><th>开度 (m)</th>' +
+    '<th>下游峰值 (m³/s)</th><th>削峰率 (%)</th><th>闸上最高 (m)</th><th>可行</th><th>Pareto</th></tr></thead><tbody>';
   rows.forEach((c,i)=>{
     html += '<tr><td>' + escHtml(c.name) + '</td><td>' + c.a_end.toFixed(2) +
       '</td><td>' + c.peak.toFixed(2) + '</td><td>' + (c.cut*100).toFixed(1) + '%' +
@@ -1385,7 +1459,7 @@ function renderOpt(r){
       (c.feasible ? '<span class="okTag">✓</span>' : '<span class="badTag">✗</span>') +
       '</td><td>' + (r.pareto[i] ? '●' : '') + '</td></tr>';
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   if(r.recommend){
     html += '<div class="aiRec"><b>推荐 ' + escHtml(r.recommend.name) + '</b>：开度 ' +
       r.recommend.a_end.toFixed(2) + ' m，下游峰值 ' + r.recommend.peak.toFixed(2) +
@@ -1413,6 +1487,8 @@ function renderOpt(r){
     '<button type="button" id="optReport" class="miniBtn">下载建议书</button>' +
     '<span id="cfOut" style="font-size:12px;"></span></div>';
   $("#optOut").innerHTML = html;
+  setPlanSummary(r.recommend, {max_stage: r.max_stage, source: "枚举寻优",
+                               report: r.report_md});
   const ex = $("#optExplain");
   if(ex) renderReply(ex, r.explanation || "");
   $("#cPareto").style.display = "";
@@ -1436,7 +1512,7 @@ function renderOpt(r){
         t_peak: (+$("#tp").value)*3600, t_base: (+$("#tb").value)*3600,
         t_end: (+$("#te").value)*3600, Nx: 61,
         h_dn: $("#hdn").value.trim()==="auto" ? -1 : +$("#hdn").value,
-        gate: currentGate(), a_end: +$("#cfA").value, max_stage: +$("#optMax").value
+        gate: currentGate(), a_end: +$("#cfA").value, max_stage: +$("#sharedMax").value
       });
       if(!rr.ok){ out.textContent = "失败：" + (rr.error || ""); return; }
       const x = rr.result;
@@ -1503,7 +1579,7 @@ function renderAI(r){
         '">闸上 ≤ ' + v + ' m</button>').join(" ") +
       '</div></div>';
     out.querySelectorAll("button[data-ms]").forEach(b=>{
-      b.onclick = ()=>{ $("#aiMaxStage").value = b.dataset.ms; runAI(); };
+      b.onclick = ()=>{ $("#sharedMax").value = b.dataset.ms; runAI(); };
     });
     return;
   }
@@ -1511,8 +1587,8 @@ function renderAI(r){
   let html = '<div class="hint">约束：闸上 ≤ ' + r.max_stage + ' m；基准峰值 ' +
     r.reference_peak + ' m³/s' +
     (r.fallback_used ? '　（AI 未参与解释，已用模板降级）' : '') + '</div>';
-  html += '<table id="aiTable"><thead><tr><th>候选</th><th>开度 m</th><th>下游峰值</th>' +
-    '<th>削峰率</th><th>闸上最高</th><th>可行</th><th>来源</th></tr></thead><tbody>';
+  html += '<div class="tableWrap"><table id="aiTable"><thead><tr><th>候选</th><th>开度 (m)</th>' +
+    '<th>下游峰值 (m³/s)</th><th>削峰率 (%)</th><th>闸上最高 (m)</th><th>可行</th><th>来源</th></tr></thead><tbody>';
   rows.forEach(c=>{
     html += "<tr><td>" + escHtml(c.name) + "</td><td>" + c.a_end.toFixed(2) +
       "</td><td>" + c.peak.toFixed(2) + "</td><td>" + (c.cut*100).toFixed(1) + "%" +
@@ -1520,7 +1596,7 @@ function renderAI(r){
       (c.feasible ? '<span class="okTag">✓</span>' : '<span class="badTag">✗</span>') +
       "</td><td>" + (c.source === "ai" ? "AI 精修" : "粗扫") + "</td></tr>";
   });
-  html += "</tbody></table>";
+  html += "</tbody></table></div>";
   if(r.recommend){
     html += '<div class="aiRec"><b>推荐 ' + escHtml(r.recommend.name) + '</b>：开度 ' +
       r.recommend.a_end.toFixed(2) + ' m，下游峰值 ' + r.recommend.peak.toFixed(2) +
@@ -1535,6 +1611,8 @@ function renderAI(r){
   out.innerHTML = html;
   const ex = $("#aiExplain");
   if(ex) renderReply(ex, r.explanation || "");
+  if(r.recommend) setPlanSummary(r.recommend,
+    {max_stage: r.max_stage, source: r.fallback_used ? "AI（模板降级）" : "AI 参谋"});
   const ap = $("#aiApply");
   if(ap && r.recommend){
     ap.onclick = ()=>{
