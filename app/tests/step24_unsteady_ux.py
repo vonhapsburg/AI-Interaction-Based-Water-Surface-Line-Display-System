@@ -89,6 +89,9 @@ def main():
         check("调度页有方案对比", 'id="cmpBtn"' in html and "drawCompare" in html)
         check("调度页有 AI 参谋", 'id="aiBtn"' in html and "runAI" in html)
         check("AI 推荐可应用", "aiApply" in html and "need_clarify" in html)
+        check("调度页有枚举寻优", 'id="optBtn"' in html and "runOpt" in html)
+        check("调度页有 Pareto 与建议书", "drawPareto" in html and "report_md" in html)
+        check("调度页有反事实", 'id="cfBtn"' in html and "counterfactual" in html)
         check("无定时覆盖建议", "setInterval(renderChips" not in html)
 
     if isinstance(html, str):

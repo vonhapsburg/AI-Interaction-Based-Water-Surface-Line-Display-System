@@ -148,10 +148,10 @@ def _numbers_in(text):
 def _table_numbers(table, max_stage):
     vals = {round(max_stage, 2), round(max_stage, 1)}
     for r in table:
-        vals.update({round(r["a_end"], 2), round(r["a_end"], 1),
-                     round(r["peak"], 2), round(r["peak"], 1),
-                     round(r["cut"] * 100, 1), round(r["hmax"], 2),
-                     round(r["hmax"], 1)})
+        vals.update({round(r.get("a_end", 0), 2), round(r.get("a_end", 0), 1),
+                     round(r.get("peak", 0), 2), round(r.get("peak", 0), 1),
+                     round(r.get("cut", 0) * 100, 1), round(r.get("hmax", 0), 2),
+                     round(r.get("hmax", 0), 1)})
     return vals
 
 

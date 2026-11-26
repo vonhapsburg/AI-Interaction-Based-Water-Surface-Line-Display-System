@@ -275,6 +275,22 @@ window.addEventListener("unhandledrejection", function(e){
   </section>
 
   <section class="card" style="margin-top:12px;">
+    <div class="card-h">枚举寻优与 Pareto <span class="tag">0.3–1.1 m 网格 + 扰动校核</span></div>
+    <div class="card-b">
+      <div class="grid2">
+        <div class="field"><label>闸上允许最高 (m)</label>
+          <input id="optMax" type="number" step="0.1" value="6.0"></div>
+        <div class="field"><label>候选数</label>
+          <select id="optSteps"><option>5</option><option selected>7</option><option>9</option></select></div>
+      </div>
+      <button id="optBtn" type="button">开始寻优</button>
+      <div class="hint" id="optMsg">在 0.3–1.1 m 内枚举开度，按闸上约束筛选，给出 Pareto 与推荐。</div>
+      <div id="optOut"></div>
+      <canvas id="cPareto" height="280" style="margin-top:10px;display:none;"></canvas>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px;">
     <div class="card-h">方案对比 <span class="tag">多个开度方案，一次算完</span></div>
     <div class="card-b">
       <div class="grid2">
@@ -1202,6 +1218,153 @@ async function runAI(){
   }
 }
 if($("#aiBtn")) $("#aiBtn").addEventListener("click", runAI);
+
+async function runOpt(){
+  const btn = $("#optBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "寻优中…"; }
+  $("#optOut").innerHTML = '<div class="hint">枚举候选 → 求解 → 筛选 Pareto…（约 5–10 s）</div>';
+  try{
+    const r = await postJSON("/api/unsteady/optimize", {
+      L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+      i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
+      t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
+      t_end: (+$("#te").value) * 3600, Nx: 61,
+      h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
+      gate: currentGate(), max_stage: +$("#optMax").value,
+      steps: +$("#optSteps").value
+    });
+    if(!r.ok){ $("#optOut").textContent = "寻优失败：" + (r.error || ""); return; }
+    renderOpt(r);
+  }catch(e){
+    $("#optOut").textContent = "请求失败：" + e.message;
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "开始寻优"; }
+  }
+}
+if($("#optBtn")) $("#optBtn").addEventListener("click", runOpt);
+
+function renderOpt(r){
+  const rows = r.candidates || [];
+  let html = '<div class="hint">约束：闸上 ≤ ' + r.max_stage + ' m；基准峰值 ' +
+    r.reference_peak + ' m³/s；● = Pareto 前沿' +
+    (r.fallback_used ? '（AI 解释未参与或不可追溯，已用模板）' : '') + '</div>';
+  html += '<table id="aiTable"><thead><tr><th>方案</th><th>开度</th><th>下游峰值</th>' +
+    '<th>削峰率</th><th>闸上最高</th><th>可行</th><th>Pareto</th></tr></thead><tbody>';
+  rows.forEach((c,i)=>{
+    html += '<tr><td>' + escHtml(c.name) + '</td><td>' + c.a_end.toFixed(2) +
+      '</td><td>' + c.peak.toFixed(2) + '</td><td>' + (c.cut*100).toFixed(1) + '%' +
+      '</td><td>' + c.hmax.toFixed(2) + '</td><td>' +
+      (c.feasible ? '<span class="okTag">✓</span>' : '<span class="badTag">✗</span>') +
+      '</td><td>' + (r.pareto[i] ? '●' : '') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  if(r.recommend){
+    html += '<div class="aiRec"><b>推荐 ' + escHtml(r.recommend.name) + '</b>：开度 ' +
+      r.recommend.a_end.toFixed(2) + ' m，下游峰值 ' + r.recommend.peak.toFixed(2) +
+      ' m³/s，削峰 ' + (r.recommend.cut*100).toFixed(1) + '%，闸上最高 ' +
+      r.recommend.hmax.toFixed(2) + ' m。<div id="optExplain" style="margin-top:6px;"></div></div>';
+  }else{
+    html += '<div class="aiRec"><b>没有满足约束的方案。</b><div id="optExplain" style="margin-top:6px;"></div>';
+    (r.relax || []).forEach(x=>{
+      html += '<div style="margin-top:4px;">放宽到 ≤ ' + x.limit + ' m：' +
+        (x.feasible_any ? ('可推荐 ' + x.best.name + '（开度 ' + x.best.a_end.toFixed(2) +
+          '、峰值 ' + x.best.peak.toFixed(2) + '、闸上 ' + x.best.hmax.toFixed(2) + '）')
+          : '仍无可行解') + '</div>';
+    });
+    html += '</div>';
+  }
+  if((r.robust || []).length){
+    html += '<div style="margin-top:8px;font-size:12px;color:#41556b;">扰动校核：' +
+      r.robust.map(x=>x.case + ' 闸上 ' + (x.hmax!=null?x.hmax.toFixed(2):'—') +
+        ' m（' + (x.ok ? '仍满足' : '会超限') + '）').join('；') + '</div>';
+  }
+  html += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">' +
+    '<span class="hint" style="margin:0;">反事实：如果关到</span>' +
+    '<input id="cfA" type="number" step="0.05" value="0.5" style="width:90px;">' +
+    '<button type="button" id="cfBtn" class="miniBtn">算一下</button>' +
+    '<button type="button" id="optReport" class="miniBtn">下载建议书</button>' +
+    '<span id="cfOut" style="font-size:12px;"></span></div>';
+  $("#optOut").innerHTML = html;
+  const ex = $("#optExplain");
+  if(ex) renderReply(ex, r.explanation || "");
+  $("#cPareto").style.display = "";
+  drawPareto(r);
+  const rep = $("#optReport");
+  if(rep) rep.onclick = ()=>{
+    const blob = new Blob([r.report_md || ""], {type: "text/markdown;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "调度建议书.md";
+    a.click();
+  };
+  const cf = $("#cfBtn");
+  if(cf) cf.onclick = async ()=>{
+    const out = $("#cfOut");
+    out.textContent = "计算中…";
+    try{
+      const rr = await postJSON("/api/unsteady/counterfactual", {
+        L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+        i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
+        t_peak: (+$("#tp").value)*3600, t_base: (+$("#tb").value)*3600,
+        t_end: (+$("#te").value)*3600, Nx: 61,
+        h_dn: $("#hdn").value.trim()==="auto" ? -1 : +$("#hdn").value,
+        gate: currentGate(), a_end: +$("#cfA").value, max_stage: +$("#optMax").value
+      });
+      if(!rr.ok){ out.textContent = "失败：" + (rr.error || ""); return; }
+      const x = rr.result;
+      out.textContent = "峰值 " + x.peak.toFixed(2) + "、削峰 " + (x.cut*100).toFixed(1) +
+        "%、闸上 " + x.hmax.toFixed(2) + " m（" + (x.feasible ? "可行" : "不可行") + "）";
+    }catch(e){ out.textContent = "失败：" + e.message; }
+  };
+}
+
+function drawPareto(r){
+  const cv = $("#cPareto");
+  if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = cv.clientWidth * dpr; cv.height = 280 * dpr;
+  cv.style.height = "280px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cv.clientWidth, h = 280;
+  ctx.clearRect(0, 0, w, h);
+  const pad = {l: 58, r: 18, t: 18, b: 36};
+  const rows = r.candidates || [];
+  let hmin = Infinity, hmax = -Infinity, pmin = Infinity, pmax = -Infinity;
+  rows.forEach(c=>{ hmin=Math.min(hmin,c.hmax); hmax=Math.max(hmax,c.hmax);
+                    pmin=Math.min(pmin,c.peak); pmax=Math.max(pmax,c.peak); });
+  hmin = Math.max(0, hmin - 0.2); hmax += 0.2; pmin = Math.max(0, pmin - 1); pmax += 1;
+  const X = v => pad.l + (v - hmin) / (hmax - hmin || 1) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (v - pmin) / (pmax - pmin || 1) * (h - pad.t - pad.b);
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + (h-pad.t-pad.b)*k/4;
+    ctx.strokeStyle = "#eef1f5"; ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w-pad.r, yy); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.font = "10px sans-serif"; ctx.textAlign = "right";
+    ctx.fillText((pmax - (pmax-pmin)*k/4).toFixed(1), pad.l-6, yy+3);
+  }
+  for(let k=0;k<=4;k++){
+    const xx = pad.l + (w-pad.l-pad.r)*k/4;
+    ctx.fillStyle = "#8b98a6"; ctx.textAlign = "center";
+    ctx.fillText((hmin + (hmax-hmin)*k/4).toFixed(1), xx, h-pad.b+15);
+  }
+  rows.forEach((c,i)=>{
+    ctx.beginPath(); ctx.arc(X(c.hmax), Y(c.peak), 5, 0, 2*Math.PI);
+    ctx.fillStyle = c.feasible ? "#2f7d54" : "#b23c4a"; ctx.fill();
+    if(r.pareto && r.pareto[i]){
+      ctx.strokeStyle = "#2e6da4"; ctx.lineWidth = 2; ctx.stroke();
+    }
+  });
+  if(r.recommend){
+    ctx.beginPath(); ctx.arc(X(r.recommend.hmax), Y(r.recommend.peak), 8, 0, 2*Math.PI);
+    ctx.strokeStyle = "#b06a1f"; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = "#b06a1f"; ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("推荐", X(r.recommend.hmax)+10, Y(r.recommend.peak)-6);
+  }
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("闸上最高水位 (m)", (pad.l + w - pad.r)/2, h - 8);
+  ctx.save(); ctx.translate(14, (pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText("下游峰值 (m³/s)", 0, 0); ctx.restore();
+}
 
 function renderAI(r){
   const out = $("#aiOut");

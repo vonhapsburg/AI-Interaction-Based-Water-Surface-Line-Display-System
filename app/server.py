@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate15"
+BUILD_ID = "2026-11-26-gate16"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -986,6 +986,51 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": intent is not None, "intent": intent})
             except Exception as e:
                 return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)})
+
+        # ---- 枚举寻优 + Pareto + 放宽 + 鲁棒性 ----
+        if path == "/api/unsteady/optimize":
+            try:
+                from unsteady import schedule_opt
+                base = {}
+                for k in ("L", "b", "m", "n", "i0", "Q0", "Qpeak",
+                          "t_peak", "t_base", "t_end", "Nx", "h_dn"):
+                    if body.get(k) is not None:
+                        base[k] = body.get(k)
+                if body.get("gate"):
+                    base["gate"] = body.get("gate")
+                ms = body.get("max_stage")
+                try:
+                    ms = None if ms in (None, "") else float(ms)
+                except (TypeError, ValueError):
+                    ms = None
+                res = schedule_opt.optimize(
+                    base, text=body.get("text") or "", max_stage=ms,
+                    steps=int(body.get("steps") or 7),
+                    use_ai=not bool(body.get("no_ai")))
+                return self._json(res)
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        # ---- 反事实：如果关到某个开度 ----
+        if path == "/api/unsteady/counterfactual":
+            try:
+                from unsteady import schedule_opt
+                base = {}
+                for k in ("L", "b", "m", "n", "i0", "Q0", "Qpeak",
+                          "t_peak", "t_base", "t_end", "Nx", "h_dn"):
+                    if body.get(k) is not None:
+                        base[k] = body.get(k)
+                if body.get("gate"):
+                    base["gate"] = body.get("gate")
+                ms = body.get("max_stage")
+                ms = None if ms in (None, "") else float(ms)
+                res = schedule_opt.counterfactual(base, float(body.get("a_end")),
+                                                  ms)
+                return self._json(res)
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
         # ---- AI 调度参谋：粗扫 + 精修 + 可追溯解释 ----
         if path == "/api/unsteady/ai_schedule":
