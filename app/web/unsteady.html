@@ -70,7 +70,8 @@
   .chips-title{font-size:11px;color:#8b98a6;padding:2px 10px 4px;}
   .chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;}
   .chip{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);
-        background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;}
+        background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;
+        width:auto;margin:0;}
   .chip:hover{border-color:var(--accent2);color:var(--accent);}
   .chip.c2{background:#fff7ef;border-color:#f0dcc6;color:#a8681f;}
   .chip.c3{background:#f1f9f4;border-color:#cfe4d8;color:#2f7d54;}
@@ -969,7 +970,7 @@ async function refreshChips(text){
     if(r && r.chips && r.chips.length){
       const box = $("#chatChips");
       box.innerHTML = "";
-      r.chips.slice(0, 3).forEach(t=>{
+      r.chips.slice(0, chatExpanded ? 10 : 3).forEach(t=>{
         const b = document.createElement("button");
         b.className = "chip"; b.type = "button"; b.textContent = t;
         b.addEventListener("click", ()=>{
@@ -1675,7 +1676,7 @@ if($("#precise")) $("#precise").addEventListener("change", e=>{
   if(pill) pill.classList.toggle("active", !!e.target.checked);
 });
 if($("#chatInput")){ $("#chatInput").addEventListener("input", e=>autoGrow(e.target)); }
-refreshHnHint(); renderChips(); setInterval(renderChips, 9000);
+refreshHnHint(); renderChips();
 $("#run").addEventListener("click", runCase);
 
 /* 稳态回归：与恒定流内核逐点对比（外部锚点，不是自证） */
