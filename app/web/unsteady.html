@@ -194,6 +194,12 @@
   .gateToggle input{width:auto;margin:0;}
   .gateBox{border:1px dashed #c3ccd5;border-radius:8px;padding:10px;margin:6px 0 10px;
            background:#fafcfe;}
+  .schedRows{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;}
+  .schedRow{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;}
+  .schedRow input{margin:0;}
+  .miniBtn{width:auto;margin:0;padding:4px 10px;font-size:12px;
+           background:#eef3f8;color:#2f4b66;border:1px solid #dbe6f1;border-radius:6px;}
+  .miniBtn:hover{background:#dfeaf5;}
 </style>
 </head>
 <body>
@@ -326,7 +332,9 @@ window.addEventListener("unhandledrejection", function(e){
             <div class="field"><label>关闭历时 (h)</label><input id="gateTr" type="number" step="0.1" value="0.5"></div>
             <div class="field" style="grid-column:1 / -1;">
               <label>开度过程线（可选，多段折线）</label>
-              <input id="gateSched" type="text" placeholder="例如 0:1.0, 1:0.6, 3:0.3（时间 h:开度 m）">
+              <div id="gateSchedRows" class="schedRows"></div>
+              <button type="button" id="gateSchedAdd" class="miniBtn">＋ 增加一段</button>
+              <div class="hintline" style="margin-top:4px;">不填则用上面的初始/终止开度与关闭时刻；至少两段才启用多段过程线。</div>
             </div>
           </div>
           <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)，以局部水头损失形式加入方程，闸前水面单调过渡。</div>
@@ -539,8 +547,8 @@ async function runCase(){
     t_close: (+$("#gateTc").value) * 3600, t_ramp: (+$("#gateTr").value) * 3600
   } : null;
   if(gate){
-    const st = parseSched($("#gateSched") ? $("#gateSched").value : "");
-    if(st && st.length >= 2) gate.sched = st;
+    const st = gateSchedData();
+    if(st) gate.sched = st;
   }
   const payload = {
     model: currentModel(),
@@ -1026,17 +1034,38 @@ async function refreshChips(text){
   }catch(e){ /* 保持原有轮换 */ }
 }
 
-function parseSched(txt){
-  if(!txt) return null;
+function addGateSchedRow(t, a){
+  const box = $("#gateSchedRows");
+  if(!box) return;
+  const row = document.createElement("div");
+  row.className = "schedRow";
+  row.innerHTML = '<input type="number" step="0.1" placeholder="时间 h" value="' +
+      (t == null ? "" : t) + '">' +
+      '<input type="number" step="0.05" placeholder="开度 m" value="' +
+      (a == null ? "" : a) + '">' +
+      '<button type="button" class="miniBtn">删除</button>';
+  row.querySelector("button").onclick = ()=>row.remove();
+  box.appendChild(row);
+}
+function clearGateSched(){
+  const box = $("#gateSchedRows");
+  if(box) box.innerHTML = "";
+}
+function gateSchedData(){
+  const box = $("#gateSchedRows");
+  if(!box) return null;
   const pts = [];
-  txt.split(/[，,;；]/).forEach(p=>{
-    const m = p.split(":");
-    if(m.length < 2) return;
-    const t = parseFloat(m[0]), a = parseFloat(m[1]);
-    if(isFinite(t) && isFinite(a)) pts.push([t, a]);
+  box.querySelectorAll(".schedRow").forEach(r=>{
+    const ins = r.querySelectorAll("input");
+    const t = parseFloat(ins[0].value), a = parseFloat(ins[1].value);
+    if(isFinite(t) && isFinite(a) && t >= 0 && a > 0) pts.push([t, a]);
   });
   pts.sort((x,y)=>x[0]-y[0]);
   return pts.length >= 2 ? pts : null;
+}
+function renderGateSched(pts){
+  clearGateSched();
+  (pts || []).forEach(p=>addGateSchedRow(p[0], p[1]));
 }
 function currentGate(){
   const on = !!($("#gateOn") && $("#gateOn").checked);
@@ -1044,7 +1073,7 @@ function currentGate(){
   const g = {on: true, s_pct: +$("#gateS").value, b_g: +$("#gateB").value,
              a0: +$("#gateA0").value, a_end: +$("#gateA1").value,
              t_close: +$("#gateTc").value, t_ramp: +$("#gateTr").value};
-  const st = parseSched($("#gateSched") ? $("#gateSched").value : "");
+  const st = gateSchedData();
   if(st) g.sched = st;
   return g;
 }
@@ -1060,9 +1089,9 @@ function applyGatePatch(g){
   if(g.t_close != null) set("#gateTc", g.t_close);
   if(g.t_ramp != null) set("#gateTr", g.t_ramp);
   if(g.sched){
-    set("#gateSched", g.sched.map(p=>p[0]+":"+p[1]).join(", "));
+    renderGateSched(g.sched);
   }else if(g.t_close != null || g.a_end != null){
-    set("#gateSched", "");
+    clearGateSched();
   }
   if(mode !== "engineering"){
     mode = "engineering";
@@ -1215,7 +1244,8 @@ function summaryText(){
     (d.c_k_peak != null ? "；c_k(峰值水深)=" + d.c_k_peak : "") +
     (currentGate() ? "；含闸门：闸位" + $("#gateS").value + "%、闸宽" + $("#gateB").value +
        " m、开度" + $("#gateA0").value + "→" + $("#gateA1").value + " m" +
-       ($("#gateSched").value ? "（多段：" + $("#gateSched").value + "）" : "") : "") +
+       (gateSchedData() ? "（多段：" +
+         gateSchedData().map(p=>p[0] + "h:" + p[1] + "m").join(" → ") + "）" : "") : "") +
     (last.stations.length >= 2 ? "；首末断面峰现时间 " +
       (last.stations[0].peak_t/3600).toFixed(2) + "h → " +
       (last.stations[last.stations.length-1].peak_t/3600).toFixed(2) + "h" : "");
@@ -1343,7 +1373,7 @@ function applyPreset(key){
   if(g){
     set("#gateS",g.s); set("#gateB",g.b); set("#gateZ",g.z); set("#gateMu",g.mu);
     set("#gateA0",g.a0); set("#gateA1",g.a1); set("#gateTc",g.tc); set("#gateTr",g.tr);
-    set("#gateSched","");
+    clearGateSched();
   }
   refreshHnHint();
   runCase();
@@ -1878,6 +1908,18 @@ document.addEventListener("keydown", e=>{ if(e.key === "Escape" && chatExpanded)
 if($("#randBtn")) $("#randBtn").addEventListener("click", ()=>randomCase(false));
 if($("#randGateBtn")) $("#randGateBtn").addEventListener("click", ()=>randomCase(true));
 bindFamilyZoom();
+if($("#gateSchedAdd")) $("#gateSchedAdd").addEventListener("click", ()=>{
+  const box = $("#gateSchedRows");
+  const rows = box ? box.querySelectorAll(".schedRow") : [];
+  let t = 0, a = 1.0;
+  if(rows.length){
+    const ins = rows[rows.length - 1].querySelectorAll("input");
+    const pt = parseFloat(ins[0].value), pa = parseFloat(ins[1].value);
+    if(isFinite(pt)) t = +(pt + 0.5).toFixed(1);
+    if(isFinite(pa)) a = pa;
+  }
+  addGateSchedRow(t, a);
+});
 if($("#gateOn")) $("#gateOn").addEventListener("change", e=>{
   const box = $("#gateBox");
   if(box) box.style.display = e.target.checked ? "" : "none";
