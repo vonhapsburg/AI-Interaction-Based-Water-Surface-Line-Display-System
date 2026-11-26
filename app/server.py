@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate14"
+BUILD_ID = "2026-11-26-gate15"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -986,6 +986,30 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": intent is not None, "intent": intent})
             except Exception as e:
                 return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)})
+
+        # ---- AI 调度参谋：粗扫 + 精修 + 可追溯解释 ----
+        if path == "/api/unsteady/ai_schedule":
+            try:
+                from unsteady import schedule_ai
+                base = {}
+                for k in ("L", "b", "m", "n", "i0", "Q0", "Qpeak",
+                          "t_peak", "t_base", "t_end", "Nx", "h_dn"):
+                    if body.get(k) is not None:
+                        base[k] = body.get(k)
+                if body.get("gate"):
+                    base["gate"] = body.get("gate")
+                ms = body.get("max_stage")
+                try:
+                    ms = None if ms in (None, "") else float(ms)
+                except (TypeError, ValueError):
+                    ms = None
+                res = schedule_ai.run(base, text=body.get("text") or "",
+                                      max_stage=ms,
+                                      use_ai=not bool(body.get("no_ai")))
+                return self._json(res)
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
         # ---- 多方案对比 ----
         if path == "/api/unsteady/compare":

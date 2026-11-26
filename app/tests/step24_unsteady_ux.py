@@ -87,6 +87,8 @@ def main():
         check("对话可改闸门参数", "applyGatePatch" in html and "gate_set" in html)
         check("演进/调度两个标签", 'id="tabSchedule"' in html and "switchView" in html)
         check("调度页有方案对比", 'id="cmpBtn"' in html and "drawCompare" in html)
+        check("调度页有 AI 参谋", 'id="aiBtn"' in html and "runAI" in html)
+        check("AI 推荐可应用", "aiApply" in html and "need_clarify" in html)
         check("无定时覆盖建议", "setInterval(renderChips" not in html)
 
     if isinstance(html, str):

@@ -77,6 +77,13 @@
   #cmpTable{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
   #cmpTable th,#cmpTable td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:right;}
   #cmpTable th:first-child,#cmpTable td:first-child{text-align:left;}
+  #aiTable{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;}
+  #aiTable th,#aiTable td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:right;}
+  #aiTable th:first-child,#aiTable td:first-child{text-align:left;}
+  .aiRec{border:1px solid #cfe4d8;background:#f4fbf7;border-radius:8px;padding:10px;margin-top:10px;}
+  .aiRec b{color:#2f7d54;}
+  .traceChip{display:inline-block;background:#eef3f8;color:#2f4b66;border-radius:5px;
+             padding:1px 6px;margin:2px 4px 2px 0;font-size:11px;}
   .okTag{color:#2f7d54;font-weight:600;} .badTag{color:#b23c4a;font-weight:600;}
   .chip{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);
         background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;
@@ -253,6 +260,21 @@ window.addEventListener("unhandledrejection", function(e){
 </div>
 <section id="scheduleView" style="display:none;">
   <section class="card">
+    <div class="card-h">AI 调度参谋 <span class="tag">提候选 · 读结果 · 讲人话</span></div>
+    <div class="card-b">
+      <div class="grid2">
+        <div class="field"><label>调度要求</label>
+          <input id="aiText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
+        <div class="field"><label>闸上允许最高 (m，可留空)</label>
+          <input id="aiMaxStage" type="number" step="0.1" placeholder="如 6.0"></div>
+      </div>
+      <button id="aiBtn" type="button">让 AI 给方案</button>
+      <div class="hint" id="aiMsg">AI 只提参数与解释，所有数值来自求解器；“可行/不可行”按你给的闸上水位判断。</div>
+      <div id="aiOut" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px;">
     <div class="card-h">方案对比 <span class="tag">多个开度方案，一次算完</span></div>
     <div class="card-b">
       <div class="grid2">
@@ -1153,6 +1175,87 @@ async function runCompare(){
   }
 }
 if($("#cmpBtn")) $("#cmpBtn").addEventListener("click", runCompare);
+
+let lastAI = null;
+async function runAI(){
+  const btn = $("#aiBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "参谋计算中…"; }
+  $("#aiOut").innerHTML = '<div class="hint">粗扫候选 → AI 精修 → 求解器裁决…（约 8–15 s）</div>';
+  try{
+    const ms = $("#aiMaxStage").value.trim();
+    const r = await postJSON("/api/unsteady/ai_schedule", {
+      L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+      i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
+      t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
+      t_end: (+$("#te").value) * 3600, Nx: 61,
+      h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
+      gate: currentGate(), text: $("#aiText").value.trim(),
+      max_stage: ms === "" ? null : +ms
+    });
+    if(!r.ok){ $("#aiOut").textContent = "参谋失败：" + (r.error || ""); return; }
+    lastAI = r;
+    renderAI(r);
+  }catch(e){
+    $("#aiOut").textContent = "请求失败：" + e.message;
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "让 AI 给方案"; }
+  }
+}
+if($("#aiBtn")) $("#aiBtn").addEventListener("click", runAI);
+
+function renderAI(r){
+  const out = $("#aiOut");
+  if(r.need_clarify){
+    out.innerHTML = '<div class="aiRec"><b>需要确认：</b>' + escHtml(r.question) +
+      '<div style="margin-top:6px;">' +
+      (r.options || []).map(v=>'<button type="button" class="miniBtn" data-ms="' + v +
+        '">闸上 ≤ ' + v + ' m</button>').join(" ") +
+      '</div></div>';
+    out.querySelectorAll("button[data-ms]").forEach(b=>{
+      b.onclick = ()=>{ $("#aiMaxStage").value = b.dataset.ms; runAI(); };
+    });
+    return;
+  }
+  const rows = r.candidates || [];
+  let html = '<div class="hint">约束：闸上 ≤ ' + r.max_stage + ' m；基准峰值 ' +
+    r.reference_peak + ' m³/s' +
+    (r.fallback_used ? '　（AI 未参与解释，已用模板降级）' : '') + '</div>';
+  html += '<table id="aiTable"><thead><tr><th>候选</th><th>开度 m</th><th>下游峰值</th>' +
+    '<th>削峰率</th><th>闸上最高</th><th>可行</th><th>来源</th></tr></thead><tbody>';
+  rows.forEach(c=>{
+    html += "<tr><td>" + escHtml(c.name) + "</td><td>" + c.a_end.toFixed(2) +
+      "</td><td>" + c.peak.toFixed(2) + "</td><td>" + (c.cut*100).toFixed(1) + "%" +
+      "</td><td>" + c.hmax.toFixed(2) + "</td><td>" +
+      (c.feasible ? '<span class="okTag">✓</span>' : '<span class="badTag">✗</span>') +
+      "</td><td>" + (c.source === "ai" ? "AI 精修" : "粗扫") + "</td></tr>";
+  });
+  html += "</tbody></table>";
+  if(r.recommend){
+    html += '<div class="aiRec"><b>推荐 ' + escHtml(r.recommend.name) + '</b>：开度 ' +
+      r.recommend.a_end.toFixed(2) + ' m，下游峰值 ' + r.recommend.peak.toFixed(2) +
+      ' m³/s，削峰 ' + (r.recommend.cut*100).toFixed(1) + '%，闸上最高 ' +
+      r.recommend.hmax.toFixed(2) + ' m。<div id="aiExplain" style="margin-top:6px;"></div>' +
+      '<div style="margin-top:8px;"><button type="button" id="aiApply" class="miniBtn">' +
+      '应用到演进页</button></div></div>';
+  }else{
+    html += '<div class="aiRec"><b>没有满足约束的方案。</b>' +
+      '<div id="aiExplain" style="margin-top:6px;"></div></div>';
+  }
+  out.innerHTML = html;
+  const ex = $("#aiExplain");
+  if(ex) renderReply(ex, r.explanation || "");
+  const ap = $("#aiApply");
+  if(ap && r.recommend){
+    ap.onclick = ()=>{
+      const gon = $("#gateOn");
+      if(gon && !gon.checked){ gon.checked = true; }
+      const gbox = $("#gateBox"); if(gbox) gbox.style.display = "";
+      $("#gateA1").value = r.recommend.a_end;
+      switchView("evolve");
+      runCase();
+    };
+  }
+}
 
 function renderCompare(r){
   const tb = $("#cmpTable").querySelector("tbody");
