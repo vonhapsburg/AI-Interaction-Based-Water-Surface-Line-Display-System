@@ -291,6 +291,10 @@ window.addEventListener("unhandledrejection", function(e){
             <div class="field"><label>终止开度 a₁ (m)</label><input id="gateA1" type="number" step="0.1" value="0.5"></div>
             <div class="field"><label>开始关闭 (h)</label><input id="gateTc" type="number" step="0.1" value="0.8"></div>
             <div class="field"><label>关闭历时 (h)</label><input id="gateTr" type="number" step="0.1" value="0.5"></div>
+            <div class="field" style="grid-column:1 / -1;">
+              <label>开度过程线（可选，多段折线）</label>
+              <input id="gateSched" type="text" placeholder="例如 0:1.0, 1:0.6, 3:0.3（时间 h:开度 m）">
+            </div>
           </div>
           <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)，以局部水头损失形式加入方程，闸前水面单调过渡。</div>
         </div>
@@ -501,6 +505,10 @@ async function runCase(){
     a0: +$("#gateA0").value, a_end: +$("#gateA1").value,
     t_close: (+$("#gateTc").value) * 3600, t_ramp: (+$("#gateTr").value) * 3600
   } : null;
+  if(gate){
+    const st = parseSched($("#gateSched") ? $("#gateSched").value : "");
+    if(st && st.length >= 2) gate.sched = st;
+  }
   const payload = {
     model: currentModel(),
     gate: gate,
@@ -985,13 +993,59 @@ async function refreshChips(text){
   }catch(e){ /* 保持原有轮换 */ }
 }
 
+function parseSched(txt){
+  if(!txt) return null;
+  const pts = [];
+  txt.split(/[，,;；]/).forEach(p=>{
+    const m = p.split(":");
+    if(m.length < 2) return;
+    const t = parseFloat(m[0]), a = parseFloat(m[1]);
+    if(isFinite(t) && isFinite(a)) pts.push([t, a]);
+  });
+  pts.sort((x,y)=>x[0]-y[0]);
+  return pts.length >= 2 ? pts : null;
+}
+function currentGate(){
+  const on = !!($("#gateOn") && $("#gateOn").checked);
+  if(!on) return null;
+  const g = {on: true, s_pct: +$("#gateS").value, b_g: +$("#gateB").value,
+             a0: +$("#gateA0").value, a_end: +$("#gateA1").value,
+             t_close: +$("#gateTc").value, t_ramp: +$("#gateTr").value};
+  const st = parseSched($("#gateSched") ? $("#gateSched").value : "");
+  if(st) g.sched = st;
+  return g;
+}
+function applyGatePatch(g){
+  const gon = $("#gateOn"), gbox = $("#gateBox");
+  if(gon) gon.checked = true;
+  if(gbox) gbox.style.display = "";
+  const set = (id,v)=>{ const el = $(id); if(el && v != null) el.value = v; };
+  if(g.s_pct != null) set("#gateS", g.s_pct);
+  if(g.b_g != null) set("#gateB", g.b_g);
+  if(g.a0 != null) set("#gateA0", g.a0);
+  if(g.a_end != null) set("#gateA1", g.a_end);
+  if(g.t_close != null) set("#gateTc", g.t_close);
+  if(g.t_ramp != null) set("#gateTr", g.t_ramp);
+  if(g.sched){
+    set("#gateSched", g.sched.map(p=>p[0]+":"+p[1]).join(", "));
+  }else if(g.t_close != null || g.a_end != null){
+    set("#gateSched", "");
+  }
+  if(mode !== "engineering"){
+    mode = "engineering";
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
+    if(typeof updateModeVisuals === "function") updateModeVisuals();
+  }
+  runCase();
+}
+
 function collectParams(){
   return {
     L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak_h: +$("#tp").value, t_base_h: +$("#tb").value, t_end_h: +$("#te").value,
     h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
-    Nx: +$("#Nx").value, mode: mode
+    Nx: +$("#Nx").value, mode: mode, gate: currentGate()
   };
 }
 
@@ -1004,6 +1058,9 @@ function summaryText(){
     "；实测等效波速 " + d.c_k_measured + " m/s" +
     "；质量误差 " + (d.mass_err*100).toFixed(3) + "%" +
     (d.c_k_peak != null ? "；c_k(峰值水深)=" + d.c_k_peak : "") +
+    (currentGate() ? "；含闸门：闸位" + $("#gateS").value + "%、闸宽" + $("#gateB").value +
+       " m、开度" + $("#gateA0").value + "→" + $("#gateA1").value + " m" +
+       ($("#gateSched").value ? "（多段：" + $("#gateSched").value + "）" : "") : "") +
     (last.stations.length >= 2 ? "；首末断面峰现时间 " +
       (last.stations[0].peak_t/3600).toFixed(2) + "h → " +
       (last.stations[last.stations.length-1].peak_t/3600).toFixed(2) + "h" : "");
@@ -1058,6 +1115,10 @@ async function sendChat(){
       }else{
         wait.textContent = "出题失败：" + (r.error || "模型未返回题目");
       }
+    }else if(r.act === "gate_set"){
+      wait.textContent = (r.reply || "已更新闸门参数") + "\n正在按新开度重算…";
+      applyGatePatch(r.gate || {});
+      refreshChips(text);
     }else if(r.act === "random"){
       wait.textContent = "正在生成随机" + (r.gate ? "闸门" : "") + "算例…";
       refreshChips(text);
@@ -1127,6 +1188,7 @@ function applyPreset(key){
   if(g){
     set("#gateS",g.s); set("#gateB",g.b); set("#gateZ",g.z); set("#gateMu",g.mu);
     set("#gateA0",g.a0); set("#gateA1",g.a1); set("#gateTc",g.tc); set("#gateTr",g.tr);
+    set("#gateSched","");
   }
   refreshHnHint();
   runCase();

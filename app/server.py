@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate10"
+BUILD_ID = "2026-11-26-gate11"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -998,6 +998,34 @@ class Handler(SimpleHTTPRequestHandler):
                 from unsteady import chat as uchat
                 params = body.get("params") or {}
                 summary = body.get("summary") or ""
+                # 闸门参数：规则解析，不经过模型
+                _g = uchat.parse_gate(text)
+                if _g:
+                    _bits = []
+                    if "s_pct" in _g:
+                        _bits.append("闸位 %.0f%%" % _g["s_pct"])
+                    if "b_g" in _g:
+                        _bits.append("闸宽 %.1f m" % _g["b_g"])
+                    if "a0" in _g:
+                        _bits.append("初始开度 %.2f m" % _g["a0"])
+                    if "sched" in _g:
+                        _bits.append("多段开度 " + " → ".join(
+                            "%.1f h:%.2f m" % (a, b) for a, b in _g["sched"]))
+                    else:
+                        if "t_close" in _g:
+                            if _g.get("t_ramp", 0) <= 1e-9:
+                                _bits.append("第 %.2f h 瞬时关到 %.2f m"
+                                             % (_g["t_close"], _g.get("a_end", 0)))
+                            else:
+                                _bits.append("第 %.2f h 关到 %.2f m"
+                                             % (_g["t_close"], _g.get("a_end", 0)))
+                        elif "a_end" in _g:
+                            _bits.append("终止开度 %.2f m" % _g["a_end"])
+                    if _g.get("t_ramp", 0) > 1e-9:
+                        _bits.append("关闭历时 %.2f h" % _g["t_ramp"])
+                    return self._json({"act": "gate_set", "gate": _g,
+                                       "reply": "已识别闸门参数：" + "，".join(_bits)})
+
                 # 随机算例/随机闸门：不经过模型，直接交给前端生成
                 if re.search(r"随机闸门", text):
                     return self._json({"act": "random", "gate": True})

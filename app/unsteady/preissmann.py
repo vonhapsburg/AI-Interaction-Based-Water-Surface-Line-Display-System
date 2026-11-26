@@ -124,15 +124,31 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         a_end = float(gp.get("a_end", a0))
         t_close = float(gp.get("t_close", 0.0))
         t_ramp = float(gp.get("t_ramp", 0.0))
+        sched = []
+        try:
+            for _it in (gp.get("sched") or []):
+                if isinstance(_it, (list, tuple)) and len(_it) >= 2:
+                    sched.append((float(_it[0]), float(_it[1])))
+            sched.sort()
+        except Exception:
+            sched = []
         g_gate = int(round(s_g / L * (Nx - 1)))
         g_gate = max(1, min(Nx - 2, g_gate))
     else:
         s_g = b_g = z_s = mu_g = a0 = a_end = t_close = t_ramp = 0.0
+        sched = []
         g_gate = -1
 
     def gate_a(t):
         if not gate_on:
             return 0.0
+        if sched:
+            th = t / 3600.0
+            if th <= sched[0][0]:
+                return sched[0][1]
+            if th >= sched[-1][0]:
+                return sched[-1][1]
+            return float(np.interp(th, [p[0] for p in sched], [p[1] for p in sched]))
         if t <= t_close:
             return a0
         if t_ramp <= 1e-9:

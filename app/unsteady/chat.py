@@ -5,6 +5,7 @@
 所有数值只来自参数表与内核输出，模型不产生水力数值。
 """
 import random
+import re
 
 from agent import llm
 
@@ -63,6 +64,85 @@ QUIZ_SYS = """你是水力学习题老师。依据下面的非恒定流算例，
 5. 输出严格 JSON：{"items":[{"type":"概念辨析","q":"题面","a":"答案","why":"解析"}]}"""
 
 
+def _gate_text(p):
+    g = (p or {}).get("gate") or {}
+    if not g:
+        return ""
+    bits = []
+    if g.get("s_pct") is not None:
+        bits.append("闸位%g%%" % float(g["s_pct"]))
+    if g.get("b_g") is not None:
+        bits.append("闸宽%g m" % float(g["b_g"]))
+    if g.get("sched"):
+        bits.append("开度过程=" + "→".join("%gh:%.2fm" % (float(a), float(b))
+                                          for a, b in g["sched"]))
+    else:
+        if g.get("a0") is not None:
+            bits.append("初始开度%.2f m" % float(g["a0"]))
+        if g.get("a_end") is not None:
+            bits.append("终止开度%.2f m" % float(g["a_end"]))
+        if g.get("t_close") is not None:
+            bits.append("%g h 开始关" % float(g["t_close"]))
+        if g.get("t_ramp") is not None:
+            bits.append("关闭历时%g h" % float(g["t_ramp"]))
+    return "含闸门：" + "，".join(bits)
+
+
+def parse_gate(text):
+    """把“2 小时后关到 0.5 米”一类的话解析成闸门参数；没有数字则返回 None。"""
+    t = (text or "").strip()
+    if not t or not any(w in t for w in ("闸", "开度", "关到", "关至", "关小", "关大")):
+        return None
+    out = {}
+    m = re.search(r"闸位[^0-9]{0,8}(\d+(?:\.\d+)?)\s*(?:%|％)", t)
+    if m:
+        out["s_pct"] = float(m.group(1))
+    m = re.search(r"闸宽[^0-9]{0,8}(\d+(?:\.\d+)?)", t)
+    if m:
+        out["b_g"] = float(m.group(1))
+    m = re.search(r"(?:初始|起始)开度[^0-9]{0,6}(\d+(?:\.\d+)?)", t)
+    if m:
+        out["a0"] = float(m.group(1))
+
+    # 多段：“1 小时关到 0.6，再过 2 小时关到 0.3”
+    parts = re.split(r"[，,；;。]", t)
+    segs = []
+    acc = 0.0
+    for part in parts:
+        mm = re.search(r"(\d+(?:\.\d+)?)\s*(?:个)?小时(?:后|之后)?[^0-9]{0,10}"
+                       r"(?:关到|关至|降到|减到)\s*(\d+(?:\.\d+)?)", part)
+        if not mm:
+            continue
+        dt = float(mm.group(1))
+        aa = float(mm.group(2))
+        if part.strip().startswith("再") or "再过" in part:
+            acc += dt
+        else:
+            acc = dt
+        segs.append((round(acc, 3), aa))
+    if len(segs) >= 2:
+        out["sched"] = segs
+    elif len(segs) == 1:
+        out["t_close"] = segs[0][0]
+        out["a_end"] = segs[0][1]
+        out["t_ramp"] = 0.0
+
+    m = re.search(r"(?:关闭|关闸|关门)历时[^0-9]{0,6}(\d+(?:\.\d+)?)\s*小时", t)
+    if m:
+        out["t_ramp"] = float(m.group(1))
+
+    # “用 0.5 小时关到 0.4” → 从 0 时刻开始、线性关闭
+    m = re.search(r"用\s*(\d+(?:\.\d+)?)\s*小时[^0-9]{0,6}"
+                  r"(?:关到|关至|降到)\s*(\d+(?:\.\d+)?)", t)
+    if m:
+        out.pop("sched", None)
+        out["t_close"] = 0.0
+        out["t_ramp"] = float(m.group(1))
+        out["a_end"] = float(m.group(2))
+
+    return out or None
+
+
 def _mode_label(params):
     m = (params or {}).get("mode")
     if m == "engineering":
@@ -79,6 +159,9 @@ def _fmt_params(p):
     for k, v in (p or {}).items():
         if k in names and v not in (None, "", -1):
             out.append("%s=%s" % (names[k], v))
+    gt = _gate_text(p)
+    if gt:
+        out.append(gt)
     return "，".join(out) if out else "（尚未设置）"
 
 
@@ -197,6 +280,21 @@ def _local_quiz(params, summary, exclude):
         "会抬高（回水顶托），扰动沿 v−c 上溯，缓流条件下成立。",
         "下游水位是缓流的下游控制条件。")
 
+    gate = (params or {}).get("gate") or {}
+    gate_qs = []
+    if gate.get("on") or gate.get("s_pct") is not None:
+        gate_qs = [
+            {"type": "概念辨析", "q": "闸门关小以后，为什么闸上水位会升高？",
+             "a": "过闸流量被压小，上游来水一时大于下泄，水量在闸前蓄积，水位抬升到新的平衡。",
+             "why": "闸门是内边界，起节流作用；水位上升是水量平衡的结果。"},
+            {"type": "工程应用", "q": "关闸削峰的代价是什么？",
+             "a": "上游水位抬高、闸前库容被占用，防洪风险从下游转移到闸上。",
+             "why": "削峰与蓄水是一体两面，调度要同时看下游峰值和上游最高水位。"},
+            {"type": "数值计算", "q": "开度从 a₀ 关到 a₁，按线性关闭，t 时刻的开度怎么算？",
+             "a": "a(t) = a₀ + (a₁ − a₀)·(t − t_close)/t_ramp（t 在关闭区间内）。",
+             "why": "线性插值，区间外取端点值。"},
+        ]
+
     def norm(t):
         return "".join(str(t or "").split())
 
@@ -204,6 +302,9 @@ def _local_quiz(params, summary, exclude):
     pool = [it for it in out if norm(it["q"]) not in ex]
     if not pool:
         pool = out
+    if gate_qs:
+        rest = [x for x in pool if x not in gate_qs]
+        return (gate_qs[:2] + rest[:1])[:3]
     k = len(exclude or []) % max(len(pool), 1)
     pool = pool[k:] + pool[:k]
     return pool[:3]
@@ -272,6 +373,22 @@ def quiz(params, summary, exclude=None):
             if len(kept) >= 3:
                 break
             kept.append(it)
+
+    # 含闸门时，至少 2 题要问闸门，避免“问闸门却出了网格题”
+    if bool((params or {}).get("gate")):
+        gate_pool = [
+            {"type": "概念辨析", "q": "闸门关小以后，为什么闸上水位会升高？",
+             "a": "过闸流量被压小，上游来水一时大于下泄，水量在闸前蓄积，水位抬升到新的平衡。",
+             "why": "闸门是内边界，起节流作用。"},
+            {"type": "工程应用", "q": "关闸削峰的代价是什么？",
+             "a": "上游水位抬高、闸前库容被占用，防洪风险从下游转移到闸上。",
+             "why": "削峰与蓄水是一体两面。"},
+        ]
+        have = sum(1 for it in kept if "闸" in (it.get("q") or ""))
+        if have < 2:
+            add = [q for q in gate_pool
+                   if not any(_dup(q["q"], it.get("q", "")) for it in kept)]
+            kept = (add + kept)[:3]
     return {"items": kept}
 
 
