@@ -96,6 +96,7 @@ def main():
         check("调度页会话可回放", 'id="schedReplay"' in html and "schedule/history" in html)
         check("调度页双栏布局", "schedGrid" in html and "actRow" in html)
         check("调度固定工程模式说明", "schedNote" in html)
+        check("会话可新建", 'id="schedNew"' in html and "调度视图" in html)
         check("无定时覆盖建议", "setInterval(renderChips" not in html)
 
     if isinstance(html, str):

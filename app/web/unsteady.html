@@ -280,6 +280,7 @@ window.addEventListener("unhandledrejection", function(e){
         <input id="schedText" placeholder="例如：闸上不能超过6米，尽量削峰 / 再保守一点 / 为什么推荐它 / 关到0.5呢">
         <button id="schedSend" type="button">发送</button>
         <button id="schedReplay" type="button" class="miniBtn">回放</button>
+        <button id="schedNew" type="button" class="miniBtn">新建会话</button>
       </div>
       <div class="hint" id="schedMsg">首轮会做一次寻优（约 5–8 s），之后每轮只重算必要部分。</div>
     </div>
@@ -1176,6 +1177,15 @@ function switchView(v){
   const sv = $("#scheduleView");
   const mb = document.querySelector(".modebar");
   if(mb) mb.style.display = (v === "schedule") ? "none" : "";
+  const sub = $("#modelSub");
+  if(sub){
+    if(v === "schedule"){
+      if(!sub.dataset.evolve){ sub.dataset.evolve = sub.textContent; }
+      sub.textContent = "调度视图 · 全方程 · 方案对比与 AI 参谋";
+    }else if(sub.dataset.evolve){
+      sub.textContent = sub.dataset.evolve;
+    }
+  }
   if(ev) ev.style.display = (v === "evolve") ? "" : "none";
   if(sv) sv.style.display = (v === "schedule") ? "" : "none";
   $("#tabEvolve").classList.toggle("on", v === "evolve");
@@ -1322,6 +1332,12 @@ async function schedReplay(){
   }catch(e){ $("#schedMsg").textContent = "回放请求失败：" + e.message; }
 }
 if($("#schedReplay")) $("#schedReplay").addEventListener("click", schedReplay);
+if($("#schedNew")) $("#schedNew").addEventListener("click", ()=>{
+  schedSid = null;
+  const box = $("#schedLog"); if(box) box.innerHTML = "";
+  const empty = $("#schedEmpty"); if(empty) empty.style.display = "";
+  $("#schedMsg").textContent = "已新建会话：第一句请给出调度要求，例如“闸上不能超过6米，尽量削峰”。";
+});
 
 async function runOpt(){
   const btn = $("#optBtn");
