@@ -143,6 +143,29 @@ def parse_gate(text):
     return out or None
 
 
+def parse_schedule_intent(text):
+    """调度口语 → 约束/目标（规则，不经过模型）。"""
+    t = text or ""
+    out = {"constraints": {}, "objective": None}
+    m = re.search(r"(?:闸上|上游|闸前)[^0-9]{0,8}(?:水位)?[^0-9]{0,6}"
+                  r"(?:不超|不超过|不能超过|低于|小于|≤|<=)\s*(\d+(?:\.\d+)?)", t)
+    if m:
+        out["constraints"]["max_stage"] = float(m.group(1))
+    if re.search(r"削峰|峰值|压低|压下来|压到", t):
+        out["objective"] = "min_peak"
+    nums = [float(x) for x in re.findall(r"关到\s*(\d+(?:\.\d+)?)", t)]
+    if re.search(r"比较|对比|方案", t):
+        for x in re.findall(r"(?:和|与|、|,|，)\s*(\d+(?:\.\d+)?)", t):
+            v = float(x)
+            if 0.2 <= v <= 2.0 and v not in nums:
+                nums.append(v)
+    if nums:
+        out["plans_a"] = nums
+    if not out["constraints"] and not out["objective"] and not nums:
+        return None
+    return out
+
+
 def _mode_label(params):
     m = (params or {}).get("mode")
     if m == "engineering":

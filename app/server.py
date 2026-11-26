@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate11"
+BUILD_ID = "2026-11-26-gate12"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -977,6 +977,101 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(out)
             except Exception as e:
                 return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 500)
+
+        # ---- 调度意图（规则解析）----
+        if path == "/api/unsteady/schedule_intent":
+            try:
+                from unsteady import chat as uchat
+                intent = uchat.parse_schedule_intent(body.get("text") or "")
+                return self._json({"ok": intent is not None, "intent": intent})
+            except Exception as e:
+                return self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)})
+
+        # ---- 多方案对比 ----
+        if path == "/api/unsteady/compare":
+            try:
+                from unsteady import solver as us
+                from unsteady import preissmann as up
+                from unsteady import chat as uchat
+
+                def num(k, d):
+                    try:
+                        v = body.get(k, d)
+                        return d if v in (None, "", "auto") else float(v)
+                    except (TypeError, ValueError):
+                        return d
+
+                L = num("L", 2000.0); b = num("b", 6.0); m = num("m", 0.0)
+                n = num("n", 0.015); i0 = num("i0", 0.001)
+                Q0 = num("Q0", 10.0); Qpeak = num("Qpeak", 30.0)
+                tp = num("t_peak", 3600.0); tb = num("t_base", 7200.0)
+                te = num("t_end", 8 * 3600.0)
+                Nx = int(max(41, min(num("Nx", 81), 161)))
+                hn = us.normal_depth(b, m, n, i0, Q0)
+                h_dn = num("h_dn", -1)
+                hd = hn if h_dn is None or h_dn < 0 else h_dn
+                max_stage = num("max_stage", None)
+                text = body.get("text") or ""
+                intent = uchat.parse_schedule_intent(text)
+                if max_stage is None and intent:
+                    max_stage = (intent.get("constraints") or {}).get("max_stage")
+                plans = body.get("plans")
+                if not plans:
+                    alist = (intent or {}).get("plans_a") or [0.6, 0.4]
+                    plans = [{"name": "关到 %.2f m" % a, "a_end": a} for a in alist]
+
+                def solve_plan(gate):
+                    return up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
+                                  t_peak=tp, t_base=tb, t_end=te, h_dn=hd,
+                                  h_init=np.full(Nx, hn), Nx=Nx,
+                                  snap_hours=[te / 3600.0], gate=gate)
+
+                import time as _t
+                t0 = _t.time()
+                ref = solve_plan(None)
+                ref_peak = ref["stations"][-1]["peak_Q"]
+                rows = []
+                for p in plans[:6]:
+                    name = p.get("name") or "方案"
+                    gate = p.get("gate")
+                    if gate is None and p.get("a_end") is not None:
+                        gate = dict(s=p.get("s_pct", 50) / 100.0 * L,
+                                    b_g=p.get("b_g", b), z_s=0, mu=0.62,
+                                    a0=p.get("a0", 1.0),
+                                    a_end=float(min(max(p["a_end"], 0.2), 2.0)),
+                                    t_close=p.get("t_close", 0.8) * 3600.0,
+                                    t_ramp=p.get("t_ramp", 0.5) * 3600.0)
+                    tt = _t.time()
+                    try:
+                        res = solve_plan(gate)
+                        peak = res["stations"][-1]["peak_Q"]
+                        hmax = max((max(st["hu"]) for st in res.get("structures") or []),
+                                   default=0.0)
+                        row = {"name": name, "ok": True, "peak": round(peak, 3),
+                               "cut": round((ref_peak - peak) / max(ref_peak, 1e-9), 4),
+                               "hmax": round(hmax, 3),
+                               "mass_err": res["diagnostics"]["mass_err"],
+                               "gate_count": res["diagnostics"].get("gate_count", 0),
+                               "series": {"t": res["t"],
+                                          "Q": res["stations"][-1]["Q"]},
+                               "ms": int((_t.time() - tt) * 1000)}
+                        if max_stage is not None:
+                            row["feasible"] = bool(hmax <= max_stage)
+                        rows.append(row)
+                    except Exception as e:
+                        rows.append({"name": name, "ok": False,
+                                     "error": "%s: %s" % (type(e).__name__, e)})
+                return self._json({
+                    "ok": True, "intent": intent,
+                    "reference": {"name": "不关闸", "peak": round(ref_peak, 3),
+                                  "series": {"t": ref["t"],
+                                             "Q": ref["stations"][-1]["Q"]}},
+                    "plans": rows,
+                    "elapsed_ms": int((_t.time() - t0) * 1000),
+                })
+            except Exception as e:
+                return self._json({"ok": False,
+                                   "error": "%s: %s" % (type(e).__name__, e)}, 500)
 
         # ---- 猜你想问：按上一句延伸（规则，不花算力）----
         if path == "/api/unsteady/chips":

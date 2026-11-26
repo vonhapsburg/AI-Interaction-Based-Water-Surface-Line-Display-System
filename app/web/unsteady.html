@@ -69,6 +69,15 @@
   /* 猜你想问 */
   .chips-title{font-size:11px;color:#8b98a6;padding:2px 10px 4px;}
   .chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;}
+  .viewTabs{max-width:1500px;margin:10px auto 0;padding:0 14px;display:flex;gap:6px;}
+  .vtab{padding:5px 16px;border-radius:8px 8px 0 0;background:#eef3f8;color:#41556b;
+        font-size:12.5px;cursor:pointer;border:1px solid var(--line);border-bottom:0;}
+  .vtab.on{background:#fff;color:var(--accent);font-weight:600;}
+  #scheduleView{max-width:1500px;margin:0 auto;padding:0 14px 14px;}
+  #cmpTable{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+  #cmpTable th,#cmpTable td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:right;}
+  #cmpTable th:first-child,#cmpTable td:first-child{text-align:left;}
+  .okTag{color:#2f7d54;font-weight:600;} .badTag{color:#b23c4a;font-weight:600;}
   .chip{font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--line);
         background:#fff;color:#5b6b7c;cursor:pointer;font-family:inherit;
         width:auto;margin:0;}
@@ -232,6 +241,30 @@ window.addEventListener("unhandledrejection", function(e){
 <div id="busy"><div class="box"><div class="spin"></div><div id="busyText">计算中…</div></div></div>
 <div id="tip"></div>
 
+<div class="viewTabs">
+  <span class="vtab on" id="tabEvolve">演进</span>
+  <span class="vtab" id="tabSchedule">调度</span>
+</div>
+<section id="scheduleView" style="display:none;">
+  <section class="card">
+    <div class="card-h">方案对比 <span class="tag">多个开度方案，一次算完</span></div>
+    <div class="card-b">
+      <div class="grid2">
+        <div class="field"><label>方案：终止开度（逗号分隔）</label>
+          <input id="cmpAs" type="text" value="0.6, 0.4"></div>
+        <div class="field"><label>调度意图（可选）</label>
+          <input id="cmpText" type="text" placeholder="闸上不能超过6米，尽量削峰"></div>
+      </div>
+      <button id="cmpBtn" type="button">开始对比</button>
+      <div class="hint" id="cmpMsg">基准为“不关闸”；方案沿用当前闸位/闸宽/关闸时刻，只改终止开度。</div>
+      <table id="cmpTable" style="display:none;">
+        <thead><tr><th>方案</th><th>下游峰值 (m³/s)</th><th>削峰率</th><th>闸上最高 (m)</th><th>可行</th><th>用时</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <canvas id="cCmp" height="300" style="margin-top:10px;"></canvas>
+    </div>
+  </section>
+</section>
 <div class="wrap">
     <aside>
     <section class="card" id="chatCard">
@@ -1037,6 +1070,128 @@ function applyGatePatch(g){
     if(typeof updateModeVisuals === "function") updateModeVisuals();
   }
   runCase();
+}
+
+function switchView(v){
+  const ev = document.querySelector(".wrap");
+  const sv = $("#scheduleView");
+  if(ev) ev.style.display = (v === "evolve") ? "" : "none";
+  if(sv) sv.style.display = (v === "schedule") ? "" : "none";
+  $("#tabEvolve").classList.toggle("on", v === "evolve");
+  $("#tabSchedule").classList.toggle("on", v === "schedule");
+  if(v === "schedule") setTimeout(()=>{ if(last) refreshScheduleHint(); }, 50);
+}
+if($("#tabEvolve")) $("#tabEvolve").addEventListener("click", ()=>switchView("evolve"));
+if($("#tabSchedule")) $("#tabSchedule").addEventListener("click", ()=>switchView("schedule"));
+
+function refreshScheduleHint(){
+  const g = currentGate();
+  const msg = $("#cmpMsg");
+  if(msg && g){
+    msg.textContent = "当前闸门：闸位 " + g.s_pct + "%、闸宽 " + g.b_g +
+      " m、初始开度 " + g.a0 + " m；方案只改终止开度。";
+  }
+}
+
+async function runCompare(){
+  if(!last){ setMsg("请先在“演进”页算一次，再对比。", "err"); switchView("evolve"); return; }
+  const aList = ($("#cmpAs").value || "").split(/[,，\s]+/)
+    .map(Number).filter(x => x > 0 && x <= 3).slice(0, 5);
+  if(!aList.length){ $("#cmpMsg").textContent = "请填写至少一个终止开度，例如 0.6, 0.4"; return; }
+  const g = currentGate() || {s_pct: 50, b_g: +$("#b").value, a0: 1.0, t_close: 0.8, t_ramp: 0.5};
+  const plans = aList.map(a => ({name: "关到 " + a.toFixed(2) + " m", a_end: a,
+    s_pct: g.s_pct, b_g: g.b_g, a0: g.a0, t_close: g.t_close, t_ramp: g.t_ramp}));
+  const btn = $("#cmpBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "计算中…"; }
+  try{
+    const r = await postJSON("/api/unsteady/compare", {
+      L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
+      i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
+      t_peak: (+$("#tp").value) * 3600, t_base: (+$("#tb").value) * 3600,
+      t_end: (+$("#te").value) * 3600, Nx: 81,
+      h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
+      text: $("#cmpText").value.trim(), plans: plans
+    });
+    if(!r.ok){ $("#cmpMsg").textContent = "对比失败：" + (r.error || ""); return; }
+    renderCompare(r);
+  }catch(e){
+    $("#cmpMsg").textContent = "对比请求失败：" + e.message;
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "开始对比"; }
+  }
+}
+if($("#cmpBtn")) $("#cmpBtn").addEventListener("click", runCompare);
+
+function renderCompare(r){
+  const tb = $("#cmpTable").querySelector("tbody");
+  tb.innerHTML = "";
+  const base = r.reference;
+  tb.innerHTML += "<tr><td>不关闸（基准）</td><td>" + base.peak.toFixed(2) +
+    '</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>';
+  r.plans.forEach(p=>{
+    const feas = (p.feasible == null) ? "—" :
+      (p.feasible ? '<span class="okTag">✓</span>' : '<span class="badTag">✗</span>');
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + escHtml(p.name) + "</td><td>" + (p.ok ? p.peak.toFixed(2) : "—") +
+      "</td><td>" + (p.ok ? (p.cut * 100).toFixed(1) + "%" : "—") +
+      "</td><td>" + (p.ok ? p.hmax.toFixed(2) : "—") +
+      "</td><td>" + feas + "</td><td>" + (p.ok ? p.ms + " ms" : "失败") + "</td>";
+    tb.appendChild(tr);
+  });
+  $("#cmpTable").style.display = "";
+  const it = r.intent;
+  $("#cmpMsg").textContent = it
+    ? "识别到：" + (it.objective ? "目标=削峰 " : "") +
+      (it.constraints && it.constraints.max_stage != null ? "闸上≤" + it.constraints.max_stage + " m " : "") +
+      (it.plans_a ? "方案=" + it.plans_a.join("/") : "")
+    : "未识别到调度意图，按方案列表直接对比。";
+  drawCompare(r);
+}
+
+function drawCompare(r){
+  const cv = $("#cCmp");
+  if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = cv.clientWidth * dpr; cv.height = 300 * dpr;
+  cv.style.height = "300px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cv.clientWidth, h = 300;
+  ctx.clearRect(0, 0, w, h);
+  const pad = {l: 56, r: 16, t: 18, b: 34};
+  const series = [{name: "不关闸", s: r.reference.series, color: "#8b98a6"}];
+  const colors = ["#2e6da4", "#b23c4a", "#2f7d54", "#b06a1f", "#5a4a91"];
+  r.plans.forEach((p, i) => { if(p.ok) series.push({name: p.name, s: p.series, color: colors[i % colors.length]}); });
+  let tmax = 0, qmax = 0;
+  series.forEach(x => {
+    x.s.t.forEach(t => tmax = Math.max(tmax, t));
+    x.s.Q.forEach(q => qmax = Math.max(qmax, q));
+  });
+  tmax = Math.max(tmax, 1); qmax = Math.max(qmax, 1) * 1.1;
+  const X = t => pad.l + t / tmax * (w - pad.l - pad.r);
+  const Y = q => h - pad.b - q / qmax * (h - pad.t - pad.b);
+  for(let k = 0; k <= 4; k++){
+    const yy = pad.t + (h - pad.t - pad.b) * k / 4;
+    ctx.strokeStyle = "#eef1f5"; ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.font = "10px sans-serif"; ctx.textAlign = "right";
+    ctx.fillText((qmax * (4 - k) / 4).toFixed(1), pad.l - 6, yy + 3);
+  }
+  series.forEach(x => {
+    ctx.beginPath();
+    x.s.t.forEach((t, i) => { i ? ctx.lineTo(X(t), Y(x.s.Q[i])) : ctx.moveTo(X(t), Y(x.s.Q[i])); });
+    ctx.strokeStyle = x.color; ctx.lineWidth = 2; ctx.stroke();
+  });
+  let lx = pad.l + 4, ly = pad.t + 12;
+  series.forEach(x => {
+    ctx.strokeStyle = x.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lx, ly - 4); ctx.lineTo(lx + 18, ly - 4); ctx.stroke();
+    ctx.fillStyle = "#41556b"; ctx.font = "10.5px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(x.name, lx + 22, ly);
+    lx += 24 + ctx.measureText(x.name).width + 12;
+  });
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 10);
+  ctx.textAlign = "left"; ctx.fillText("下游 Q (m³/s)", 4, pad.t - 4);
 }
 
 function collectParams(){

@@ -112,64 +112,66 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     auto_coarsened = bool(_auto or Nx < Nx_req)
 
-    # ---------- 闸门内边界（可选）----------
+    # ---------- 结构物内边界（闸门，可多座）----------
     gp = dict(gate or {})
-    gate_on = bool(gp.get("on", False)) or (gp.get("s") is not None)
-    if gate_on:
-        s_g = float(gp.get("s", 0.5 * L))
-        b_g = float(gp.get("b_g", b))
-        z_s = float(gp.get("z_s", 0.0))
-        mu_g = float(gp.get("mu", 0.62))
-        a0 = float(gp.get("a0", 1.0))
-        a_end = float(gp.get("a_end", a0))
-        t_close = float(gp.get("t_close", 0.0))
-        t_ramp = float(gp.get("t_ramp", 0.0))
+    raw_list = gp.get("structures")
+    if isinstance(raw_list, list) and raw_list:
+        gate_list = [dict(x) for x in raw_list if isinstance(x, dict)]
+    elif gp.get("on", False) or gp.get("s") is not None:
+        gate_list = [gp]
+    else:
+        gate_list = []
+    gate_on = bool(gate_list)
+
+    def _mk_struct(g):
+        s_g = float(g.get("s", 0.5 * L))
+        b_g = float(g.get("b_g", b))
+        z_s = float(g.get("z_s", 0.0))
+        mu_g = float(g.get("mu", 0.62))
+        a0 = float(g.get("a0", 1.0))
+        a_end = float(g.get("a_end", a0))
+        t_close = float(g.get("t_close", 0.0))
+        t_ramp = float(g.get("t_ramp", 0.0))
         sched = []
         try:
-            for _it in (gp.get("sched") or []):
+            for _it in (g.get("sched") or []):
                 if isinstance(_it, (list, tuple)) and len(_it) >= 2:
                     sched.append((float(_it[0]), float(_it[1])))
             sched.sort()
         except Exception:
             sched = []
-        g_gate = int(round(s_g / L * (Nx - 1)))
-        g_gate = max(1, min(Nx - 2, g_gate))
-    else:
-        s_g = b_g = z_s = mu_g = a0 = a_end = t_close = t_ramp = 0.0
-        sched = []
-        g_gate = -1
+        seg = int(round(s_g / L * (Nx - 1)))
+        seg = max(1, min(Nx - 2, seg))
+        return {"seg": seg, "x": float(x[seg]), "s": s_g,
+                "b_g": b_g, "z_s": z_s, "mu": mu_g,
+                "a0": a0, "a_end": a_end, "t_close": t_close,
+                "t_ramp": t_ramp, "sched": sched, "a_now": a0,
+                "hist": {"t": [], "a": [], "Q": [], "hu": [], "hd": []}}
 
-    def gate_a(t):
-        if not gate_on:
+    structs = [_mk_struct(g) for g in gate_list]
+
+    def struct_a(st, t):
+        if not st:
             return 0.0
-        if sched:
+        if st["sched"]:
             th = t / 3600.0
-            if th <= sched[0][0]:
-                return sched[0][1]
-            if th >= sched[-1][0]:
-                return sched[-1][1]
-            return float(np.interp(th, [p[0] for p in sched], [p[1] for p in sched]))
-        if t <= t_close:
-            return a0
-        if t_ramp <= 1e-9:
-            return a_end
-        if t < t_close + t_ramp:
-            return a0 + (a_end - a0) * (t - t_close) / t_ramp
-        return a_end
+            ts = [p[0] for p in st["sched"]]
+            as_ = [p[1] for p in st["sched"]]
+            if th <= ts[0]:
+                return as_[0]
+            if th >= ts[-1]:
+                return as_[-1]
+            return float(np.interp(th, ts, as_))
+        if t <= st["t_close"]:
+            return st["a0"]
+        if st["t_ramp"] <= 1e-9:
+            return st["a_end"]
+        if t < st["t_close"] + st["t_ramp"]:
+            return st["a0"] + (st["a_end"] - st["a0"]) * (t - st["t_close"]) / st["t_ramp"]
+        return st["a_end"]
 
-    def gate_Q(hu, hd, a):
-        hu = np.asarray(hu, dtype=float)
-        hd = np.asarray(hd, dtype=float)
-        if (not gate_on) or a <= 1e-9:
-            return np.zeros_like(hu)
-        Hu = np.maximum(hu - z_s, 1e-4)
-        Hd = np.maximum(hd - z_s, 1e-4)
-        free = mu_g * b_g * a * np.sqrt(2.0 * G * Hu)
-        sub = mu_g * b_g * a * np.sqrt(2.0 * G * np.maximum(Hu - Hd, 1e-4))
-        return np.where(Hd < 0.65 * a, free, sub)
-
-    gate_hist = {"t": [], "a": [], "Q": [], "hu": [], "hd": []}
-    a_now = gate_a(0.0)
+    for _st in structs:
+        _st["a_now"] = float(struct_a(_st, 0.0))
 
     snap_t = [hr * 3600.0 for hr in snap_hours if hr * 3600.0 <= t_end]
     h_snap, t_snap = [], []
@@ -179,7 +181,8 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     stations = {int(round(f * (Nx - 1))) for f in station_fracs}
     if gate_on:
-        stations.add(g_gate)
+        for _st in structs:
+            stations.add(_st["seg"])
     stations = sorted(stations)
     t_hist, h_st, Q_st = [], [], []
     rec_every = max(1, steps // 600)
@@ -188,14 +191,13 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         t_hist.append(t_now)
         h_st.append([float(h[i]) for i in stations])
         Q_st.append([float(Q[i]) for i in stations])
-        if gate_on:
-            aa = gate_a(t_now)
-            qg = 0.5 * (float(Q[g_gate]) + float(Q[g_gate + 1]))
-            gate_hist["t"].append(t_now)
-            gate_hist["a"].append(aa)
-            gate_hist["Q"].append(qg)
-            gate_hist["hu"].append(float(h[g_gate]))
-            gate_hist["hd"].append(float(h[g_gate + 1]))
+        for _st in structs:
+            _h = _st["hist"]
+            _h["t"].append(t_now)
+            _h["a"].append(float(struct_a(_st, t_now)))
+            _h["Q"].append(0.5 * (float(Q[_st["seg"]]) + float(Q[_st["seg"] + 1])))
+            _h["hu"].append(float(h[_st["seg"]]))
+            _h["hd"].append(float(h[_st["seg"] + 1]))
 
     record(0.0)
     inflow = outflow = 0.0
@@ -206,7 +208,8 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     for step in range(steps):
         t_new = t + dt
         Qu = Q_up(t_new)
-        a_now = gate_a(t_new)
+        for _st in structs:
+            _st["a_now"] = float(struct_a(_st, t_new))
         h_down = h_dn
         h_old, Q_old = h.copy(), Q.copy()
         hLo, hRo = h_old[:-1], h_old[1:]
@@ -232,13 +235,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 + G * Abar * (theta * dh_new + (1 - theta) * dh_old) \
                 + G * Abar * (Sf - i0)
             if gate_on:
-                # 闸门按局部水头损失处理：Δh = Q|Q| / (2g(μ·b·a)²)
-                # 折算到单位长度即 g·A·S_gate，避免“闸前一个网格塌成干床”的假解
+                # 每座闸门在自己的网格段加局部水头损失 Δh = Q|Q| / (2g(μ·b·a)²)
                 M = M.copy()
-                a_eff = max(a_now, 1e-3)
-                qq = qL[g_gate] * abs(qL[g_gate])
-                M[g_gate] = M[g_gate] + Abar[g_gate] * qq / \
-                    (2.0 * (mu_g * b_g * a_eff) ** 2 * dx)
+                for _st in structs:
+                    a_eff = max(_st["a_now"], 1e-3)
+                    _seg = _st["seg"]
+                    qq = qL[_seg] * abs(qL[_seg])
+                    M[_seg] = M[_seg] + Abar[_seg] * qq / (
+                        2.0 * (_st["mu"] * _st["b_g"] * a_eff) ** 2 * dx)
             return C, M
 
         def residual(U):
@@ -308,7 +312,8 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     net_in = inflow - outflow
     mass_err = abs((storage1 - storage0) - net_in) / max(abs(inflow), 1e-9)
 
-    qg_final = (0.5 * (float(Q[g_gate]) + float(Q[g_gate + 1])) if gate_on else 0.0)
+    qg_final = (0.5 * (float(Q[structs[0]["seg"]]) + float(Q[structs[0]["seg"] + 1]))
+                if gate_on else 0.0)
     keep = max(1, len(t_hist) // 500)
     T = [round(v, 1) for v in t_hist[::keep]]
     stations_out = []
@@ -352,18 +357,29 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "h_dn_used": round(float(h_dn), 4),
             "h_dn_is_normal": bool(abs(h_dn - h_n0) < 1e-9),
             "gate_on": bool(gate_on),
-            "gate_x": (round(float(x[g_gate]), 2) if gate_on else None),
+            "gate_count": len(structs),
+            "gate_x": (round(structs[0]["x"], 2) if gate_on else None),
             "gate_Q_final": round(qg_final, 4),
         },
         "gate": ({
-            "on": True, "x": round(float(x[g_gate]), 2),
-            "b_g": b_g, "z_s": z_s, "mu": mu_g,
-            "t": [round(v, 1) for v in gate_hist["t"][::keep]],
-            "a": [round(v, 4) for v in gate_hist["a"][::keep]],
-            "Q": [round(v, 4) for v in gate_hist["Q"][::keep]],
-            "hu": [round(v, 4) for v in gate_hist["hu"][::keep]],
-            "hd": [round(v, 4) for v in gate_hist["hd"][::keep]],
+            "on": True, "x": round(structs[0]["x"], 2),
+            "b_g": structs[0]["b_g"], "z_s": structs[0]["z_s"],
+            "mu": structs[0]["mu"],
+            "t": [round(v, 1) for v in structs[0]["hist"]["t"][::keep]],
+            "a": [round(v, 4) for v in structs[0]["hist"]["a"][::keep]],
+            "Q": [round(v, 4) for v in structs[0]["hist"]["Q"][::keep]],
+            "hu": [round(v, 4) for v in structs[0]["hist"]["hu"][::keep]],
+            "hd": [round(v, 4) for v in structs[0]["hist"]["hd"][::keep]],
         } if gate_on else {"on": False}),
+        "structures": [{
+            "x": round(st["x"], 2), "b_g": st["b_g"], "z_s": st["z_s"],
+            "mu": st["mu"],
+            "t": [round(v, 1) for v in st["hist"]["t"][::keep]],
+            "a": [round(v, 4) for v in st["hist"]["a"][::keep]],
+            "Q": [round(v, 4) for v in st["hist"]["Q"][::keep]],
+            "hu": [round(v, 4) for v in st["hist"]["hu"][::keep]],
+            "hd": [round(v, 4) for v in st["hist"]["hd"][::keep]],
+        } for st in structs],
         "meta": {"L": L, "b": b, "m": m, "n": n, "i0": i0,
                  "Q0": Q0, "Qpeak": Qpeak, "t_peak": t_peak, "t_base": t_base,
                  "h_n": round(float(h_n0), 5), "h_dn": round(float(h_dn), 5),

@@ -83,6 +83,8 @@ def main():
         check("展开后渲染全部建议", "r.chips.slice(0, chatExpanded ? 10 : 3)" in html)
         check("闸门支持多段开度", 'id="gateSched"' in html and "parseSched" in html)
         check("对话可改闸门参数", "applyGatePatch" in html and "gate_set" in html)
+        check("演进/调度两个标签", 'id="tabSchedule"' in html and "switchView" in html)
+        check("调度页有方案对比", 'id="cmpBtn"' in html and "drawCompare" in html)
         check("无定时覆盖建议", "setInterval(renderChips" not in html)
 
     if isinstance(html, str):
