@@ -958,10 +958,14 @@ function renderReply(el, text){
   h = h.replace(/\n/g, "<br>");
   el.innerHTML = h;
 }
+let chatExpanded = false;
+let lastChipText = "";
 async function refreshChips(text){
   try{
+    lastChipText = text || "";
     const r = await postJSON("/api/unsteady/chips",
-      {text: text, params: collectParams(), summary: summaryText()});
+      {text: text, params: collectParams(), summary: summaryText(),
+       limit: chatExpanded ? 10 : 3});
     if(r && r.chips && r.chips.length){
       const box = $("#chatChips");
       box.innerHTML = "";
@@ -1638,13 +1642,13 @@ document.querySelectorAll("#modeSeg button").forEach(b=>b.addEventListener("clic
 ["#L","#b","#m","#n","#i0","#Q0"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", scheduleHint); });
 if($("#hdn")) $("#hdn").addEventListener("input", scheduleHint);
 if($("#bwBtn")) $("#bwBtn").addEventListener("click", previewBackwater);
-let chatExpanded = false;
 function setChatExpanded(on){
   chatExpanded = !!on;
   const sec = $("#chatCard"), bd = $("#chatBackdrop"), btn = $("#chatExpand");
   if(sec) sec.classList.toggle("chatExpanded", chatExpanded);
   if(bd) bd.style.display = chatExpanded ? "block" : "none";
   if(btn) btn.textContent = chatExpanded ? "⤡ 收起" : "⤢ 展开";
+  if(typeof refreshChips === "function") refreshChips(lastChipText || "");
   if(chatExpanded){ const inp = $("#chatInput"); if(inp) setTimeout(()=>inp.focus(), 60); }
 }
 if($("#chatExpand")) $("#chatExpand").addEventListener("click", e=>{

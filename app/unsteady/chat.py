@@ -297,26 +297,30 @@ _CHIP_MAP = [
 
 _DEFAULT_CHIPS = ["为什么洪峰变矮了？", "绳套为什么是逆时针？", "回水为什么能往上游传？",
                   "c_k 和峰现时间怎么算？", "扩散波和全方程差在哪？",
-                  "请给我随机生成一份随机算例", "请给我随机生成一份随机闸门"]
+                  "请给我随机生成一份随机算例", "请给我随机生成一份随机闸门",
+                  "工程模式能算什么？", "出题模式怎么用？",
+                  "精度优先什么时候该勾？", "特征线怎么判断能不能上溯？"]
 _chip_ptr = 0
 
 
-def chips(text, params=None, summary=""):
-    """依据上一句生成 3 条追问建议（规则，不花算力）。"""
+def chips(text, params=None, summary="", limit=3):
+    """依据上一句生成追问建议（规则，不花算力）；limit 可为展开模式放大。"""
     t = text or ""
-    for keys, pool in _CHIP_MAP:
-        if any(k in t for k in keys):
-            return {"chips": list(pool)[:3]}
+    limit = max(3, min(int(limit or 3), 14))
     global _chip_ptr
     out = []
-    if summary:
+    for keys, pool in _CHIP_MAP:
+        if any(k in t for k in keys):
+            out.extend(list(pool))
+            break
+    if summary and "这个结果里最值得注意的是什么？" not in out:
         out.append("这个结果里最值得注意的是什么？")
     n = len(_DEFAULT_CHIPS)
     for k in range(n):
         c = _DEFAULT_CHIPS[(_chip_ptr + k) % n]
         if c not in out:
             out.append(c)
-        if len(out) >= 3:
+        if len(out) >= limit:
             break
     _chip_ptr = (_chip_ptr + 2) % n
-    return {"chips": out[:3]}
+    return {"chips": out[:limit]}

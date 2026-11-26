@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate8"
+BUILD_ID = "2026-11-26-gate9"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -984,7 +984,8 @@ class Handler(SimpleHTTPRequestHandler):
                 from unsteady import chat as uchat
                 return self._json(uchat.chips(body.get("text") or "",
                                              body.get("params") or {},
-                                             body.get("summary") or ""))
+                                             body.get("summary") or "",
+                                             limit=body.get("limit") or 3))
             except Exception as e:
                 return self._json({"chips": [], "error": "%s: %s" % (type(e).__name__, e)})
 
