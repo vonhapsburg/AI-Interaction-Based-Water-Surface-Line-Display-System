@@ -77,6 +77,8 @@ def main():
         check("闸门图有图例与刻度", "最高闸上" in html and "水位 / 开度 (m)" in html)
         check("两个随机按钮", 'id="randBtn"' in html and 'id="randGateBtn"' in html)
         check("猜你想问点击可触发随机", 't.includes("随机闸门")' in html)
+        check("聊天区可展开", 'id="chatExpand"' in html and 'chatExpanded' in html)
+        check("聊天区有拖拽提示", 'chatResizeHint' in html)
 
     if isinstance(html, str):
         check("模式选择器置顶（modebar）", 'class="modebar"' in html and 'id="modeSeg"' in html)
