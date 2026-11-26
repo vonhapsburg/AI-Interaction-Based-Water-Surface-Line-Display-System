@@ -567,7 +567,10 @@ async function runCase(){
     if(!r.ok){ setMsg("计算失败：" + (r.error || "未知原因"), "err"); return; }
     last = r.result;
     last.ms = performance.now() - t0;
-    if(gate && last.gate){ last.gate._tc = gate.t_close; last.gate._tr = gate.t_ramp; }
+    if(gate && last.gate){
+      last.gate._tc = gate.t_close; last.gate._tr = gate.t_ramp;
+      last.gate._sched = !!gate.sched;
+    }
     drawAll(last);
     autoRefreshSide();   // 自动刷新“回水预览”和“特征线”
     setMsg("完成：质量误差 " + (last.diagnostics.mass_err * 100).toFixed(3) +
@@ -956,7 +959,7 @@ function drawDiag(R){
   const pn = $("#peakNote");
   if(pn){
     pn.textContent = (R.gate && R.gate.on)
-      ? "含闸门：闸门断面的“峰现时刻”是关闸把流量掐住的时刻，不是洪峰到达时刻；下游峰值才是被削后的洪峰。"
+      ? "含闸门：闸门断面的峰值时刻由闸门开度过程决定，不一定是洪峰到达时刻；下游峰值才是被削后的洪峰。"
       : "削峰、展宽、滞后是扩散波相对运动波多出来的两个特征（坦化）。";
   }
   R.stations.forEach(st=>{
@@ -978,7 +981,7 @@ function drawDiag(R){
       hs[iRise].toFixed(3) + " m，落水段 h=" + hs[iFall].toFixed(3) + " m" +
       (hs[iRise] < hs[iFall] ? "（涨水更低，环为逆时针）" : "（涨水更高，环为顺时针）") +
       "；虚线是恒定单值关系，非恒定时它变成绳套。" +
-    ((R.gate && R.gate.on) ? " 环上的折返分支是关闸造成，不是数值错误。" : "");
+    ((R.gate && R.gate.on) ? " 环上的折返分支是闸门开度变化造成的，不是数值错误。" : "");
   }
 }
 
@@ -1736,8 +1739,8 @@ function drawGate(R){
     ctx.fillText((tmax * k / 4 / 3600).toFixed(1), xx, h - pad.b + 15);
   }
 
-  // 关闸时段底纹
-  if(g._tc != null){
+  // 关闸时段底纹（仅单段线性关闭时画；多段过程线不适用）
+  if(g._tc != null && !g._sched){
     const x1 = X(Math.max(0, Math.min(g._tc, tmax)));
     const x2 = X(Math.max(0, Math.min(g._tc + (g._tr || 0), tmax)));
     if(x2 > x1){
@@ -1817,7 +1820,8 @@ function drawGate(R){
   const note = $("#gateNote");
   if(note){
     note.innerHTML = "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
-      "；开度 " + g.a[0].toFixed(2) + " → " + g.a[g.a.length-1].toFixed(2) + " m；" +
+      (g._sched ? "；开度按多段过程线 " : "；开度 ") +
+      g.a[0].toFixed(2) + " → " + g.a[g.a.length-1].toFixed(2) + " m；" +
       "最终过闸 Q=" + Q[Q.length-1].toFixed(2) + " m³/s，闸上最高水位 " +
       Math.max.apply(null, hu).toFixed(2) + " m。";
   }
