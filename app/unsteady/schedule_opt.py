@@ -174,7 +174,7 @@ def _report_md(base, max_stage, rows, recommend, relax, robust, explanation, par
     return "\n".join(lines)
 
 
-def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
+def optimize(base, text="", max_stage=None, steps=7, use_ai=False, refine=True):
     base = ai._base_defaults(base)
     intent = chat.parse_schedule_intent(text or "") or {}
     if max_stage is None:
@@ -210,14 +210,14 @@ def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
     recommend = min(feas, key=lambda r: r["peak"]) if feas else None
 
     # 可行边界二分：在最后一个不可行与第一个可行之间细化，兼顾精度与耗时
-    if feas:
+    if feas and refine:
         feas_sorted = sorted(feas, key=lambda r: r["a_end"])
         first = feas_sorted[0]
         lower = max([r for r in rows if r["a_end"] < first["a_end"] and not r["feasible"]],
                     key=lambda r: r["a_end"], default=None)
         if lower is not None:
             lo, hi = lower["a_end"], first["a_end"]
-            for k in range(3):
+            for k in range(2):
                 mid = round((lo + hi) / 2.0, 3)
                 if any(abs(r["a_end"] - mid) < 1e-6 for r in rows):
                     break
@@ -290,7 +290,7 @@ def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
     report = _report_md(base, max_stage, rows, recommend, relax, robust,
                         explanation, pareto)
     return {
-        "ok": True, "need_clarify": False, "intent": intent,
+        "ok": True, "need_clarify": False, "intent": intent, "base": base,
         "max_stage": max_stage, "reference_peak": round(ref_peak, 3),
         "candidates": rows, "pareto": pareto,
         "recommend": recommend, "feasible_any": bool(feas),

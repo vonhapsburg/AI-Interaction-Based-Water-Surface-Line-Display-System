@@ -128,6 +128,29 @@ check("drawFamily（含包络带）", () => { sandbox.drawFamily(R, 0); });
 check("drawHydro", () => { sandbox.drawHydro(R); });
 check("drawLoop（含引线标签）", () => { sandbox.drawLoop(R); });
 check("drawDiag", () => { sandbox.drawDiag(R); });
+check("drawGate（堰分支）", () => {
+  const Rw = JSON.parse(JSON.stringify(R));
+  Rw.structures = [{type: "weir", x: 600, b_w: 5, C: 0.35, z_s: 0.5,
+    t: [0, 900, 1800], Q: [8, 12, 10], hu: [3.6, 3.8, 3.7],
+    hd: [1.4, 1.5, 1.45], a: [0, 0, 0],
+    H0_hist: [3.1, 3.3, 3.2], sig_hist: [1, 1, 1],
+    reg_hist: ["free", "free", "free"], regime: "free", sigma: 1, H0: 3.2}];
+  Rw.gate = {on: false};
+  sandbox.drawGate(Rw);
+});
+check("drawWeirRate", () => {
+  const Rw = JSON.parse(JSON.stringify(R));
+  Rw.structures = [{type: "weir", x: 600, b_w: 5, C: 0.35, z_s: 0.5,
+    Q: [8, 12, 10], H0_hist: [3.1, 3.3, 3.2], sig_hist: [1, 1, 1],
+    reg_hist: ["free", "free", "free"]}];
+  sandbox.drawWeirRate(Rw);
+});
+check("drawWeirZoom", () => {
+  const Rw = JSON.parse(JSON.stringify(R));
+  Rw.structures = [{type: "weir", x: 500, b_w: 5, C: 0.35, z_s: 0.5,
+    H0: 3.2, regime: "free"}];
+  sandbox.drawWeirZoom(Rw);
+});
 check("drawGate（含闸门）", () => {
   sandbox.drawGate(Object.assign({}, R, { gate: {
     on: true, x: 500, b_g: 5, z_s: 0, mu: 0.62,

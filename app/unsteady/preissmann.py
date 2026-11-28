@@ -194,7 +194,8 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         typ = str(g.get("type", "gate")).lower()
         seg = int(round(s_g / L * (Nx - 1)))
         seg = max(1, min(Nx - 2, seg))
-        hist = {"t": [], "a": [], "Q": [], "hu": [], "hd": []}
+        hist = {"t": [], "a": [], "Q": [], "hu": [], "hd": [],
+                "H0": [], "sig": [], "reg": []}
         if typ == "weir":
             b_w = float(g.get("b_w", g.get("b_g", b)))
             C_w = float(g.get("C", 0.35))
@@ -302,9 +303,17 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             _h["hu"].append(float(h[_st["seg"]]))
             _h["hd"].append(float(h[_st["seg"] + 1]))
             if _st.get("type") == "weir":
-                _st["_H0_last"] = max(float(h[_st["seg"]]) - _st["z_s"], 0.0)
+                _h1 = max(float(h[_st["seg"]]) - _st["z_s"], 0.0)
+                _st["_H0_last"] = _h1
                 _st["_sig_last"] = float(_st.get("_sig", 1.0))
                 _st["_reg_last"] = _st.get("_reg", "free")
+                _h["H0"].append(_h1)
+                _h["sig"].append(_st["_sig_last"])
+                _h["reg"].append(_st["_reg_last"])
+            else:
+                _h["H0"].append(0.0)
+                _h["sig"].append(1.0)
+                _h["reg"].append("gate")
 
     record(0.0)
     inflow = outflow = 0.0
@@ -547,6 +556,9 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "regime": st.get("_reg_last", st.get("_reg")),
             "sigma": round(float(st.get("_sig_last", st.get("_sig", 1.0))), 3),
             "H0": round(float(st.get("_H0_last", 0.0)), 3),
+            "H0_hist": [round(v, 4) for v in st["hist"].get("H0", [])[::keep]],
+            "sig_hist": [round(v, 3) for v in st["hist"].get("sig", [])[::keep]],
+            "reg_hist": st["hist"].get("reg", [])[::keep],
             "t": [round(v, 1) for v in st["hist"]["t"][::keep]],
             "a": [round(v, 4) for v in st["hist"]["a"][::keep]],
             "Q": [round(v, 4) for v in st["hist"]["Q"][::keep]],

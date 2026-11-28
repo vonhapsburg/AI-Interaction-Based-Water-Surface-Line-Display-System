@@ -54,7 +54,7 @@ def _capability_reply(sess):
 
 
 def _new_result(base, max_stage, steps=5):
-    r = opt.optimize(base, text="", max_stage=max_stage, steps=steps, use_ai=False)
+    r = opt.optimize(base, text="", max_stage=max_stage, steps=steps, use_ai=False, refine=False)
     return r
 
 

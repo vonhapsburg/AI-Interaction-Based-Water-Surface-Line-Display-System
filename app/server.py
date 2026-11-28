@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate33"
+BUILD_ID = "2026-11-28-gate34"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -1256,6 +1256,17 @@ class Handler(SimpleHTTPRequestHandler):
                 from unsteady import chat as uchat
                 params = body.get("params") or {}
                 summary = body.get("summary") or ""
+                # 宽顶堰参数：规则解析
+                _w = uchat.parse_weir(text)
+                if _w:
+                    _b = []
+                    if "s_pct" in _w: _b.append("堰位 %.0f%%" % _w["s_pct"])
+                    if "b_w" in _w: _b.append("堰宽 %.1f m" % _w["b_w"])
+                    if "z_s" in _w: _b.append("堰顶 %.2f m" % _w["z_s"])
+                    if "C" in _w: _b.append("流量系数 %.2f" % _w["C"])
+                    return self._json({"act": "weir_set", "weir": _w,
+                                       "reply": "已识别宽顶堰参数：" + "，".join(_b)})
+
                 # 闸门参数：规则解析，不经过模型
                 _g = uchat.parse_gate(text)
                 if _g:

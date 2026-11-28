@@ -397,6 +397,8 @@ window.addEventListener("unhandledrejection", function(e){
           <button class="preset eng" data-p="gate_cut">关闸削峰</button>
           <button class="preset eng" data-p="two_gate">双闸联调</button>
           <button class="preset eng" data-p="two_gate_stagger">双闸错峰</button>
+          <button class="preset eng" data-p="weir_free">堰自由出流</button>
+          <button class="preset eng" data-p="weir_sub">堰淹没转换</button>
           <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
           <button class="preset rand" id="randGateBtn" type="button">🎲 随机单闸</button>
           <button class="preset rand" id="randTwoBtn" type="button">🎲 随机双闸</button>
@@ -452,6 +454,17 @@ window.addEventListener("unhandledrejection", function(e){
             <div class="field"><label>关闭历时2 (h)</label><input id="gate2Tr" type="number" step="0.1" value="0.5"></div>
           </div>
           <div class="hintline">第二座闸用单段线性关闭；两座闸各自在所在网格段加局部水头损失。</div>
+        </div>
+
+        <label class="gateToggle" style="margin-top:8px;"><input type="checkbox" id="weirOn"> 含宽顶堰（内边界，仅工程模式）</label>
+        <div class="gateBox" id="weirBox" style="display:none;">
+          <div class="grid2">
+            <div class="field"><label>堰位（占渠长 %）</label><input id="weirS" type="number" step="1" value="60"></div>
+            <div class="field"><label>堰宽 b_w (m)</label><input id="weirBw" type="number" step="0.1" value="6"></div>
+            <div class="field"><label>堰顶高程 z_c (m)</label><input id="weirZ" type="number" step="0.1" value="0.5"></div>
+            <div class="field"><label>流量系数 C</label><input id="weirC" type="number" step="0.01" value="0.35"></div>
+          </div>
+          <div class="hintline">堰顶为控制断面；自由出流 Q=C·b_w·H^(3/2)，淹没时按系数折减。下游急流不支持。</div>
         </div>
 
         <button id="run">计算</button>
@@ -547,12 +560,28 @@ window.addEventListener("unhandledrejection", function(e){
     </section>
 
     <section class="card" id="gateCard" style="display:none;">
-      <div class="card-h">⑤ 闸门：开度、过闸流量与闸上水位
+      <div class="card-h">⑤ 闸门 / 宽顶堰：流量、水位与状态
         <select id="gatePick" style="display:none;width:auto;margin-left:8px;"></select>
         <span class="tag">内边界</span></div>
       <div class="card-b">
         <div class="plot"><canvas id="cGate" class="base" height="260"></canvas><canvas id="ovlGate" class="ovl"></canvas></div>
         <div class="note" id="gateNote">蓝色=过闸流量，红色=闸上水位，绿色=闸下水位，灰色虚线=开度。</div>
+      </div>
+    </section>
+
+    <section class="card" id="weirRateCard" style="display:none;">
+      <div class="card-h">⑥ 宽顶堰率定曲线 <span class="tag">自由/淹没 + 当前运行轨迹</span></div>
+      <div class="card-b">
+        <canvas id="cWeirRate" height="280"></canvas>
+        <div class="note" id="weirRateNote">实线=自由出流 Q=C·b·H^(3/2)；虚线=不同淹没比；彩色点=本次运行。</div>
+      </div>
+    </section>
+
+    <section class="card" id="weirZoomCard" style="display:none;">
+      <div class="card-h">⑦ 堰段局部放大 <span class="tag">堰顶临界与水面跌落</span></div>
+      <div class="card-b">
+        <canvas id="cWeirZoom" height="240"></canvas>
+        <div class="note" id="weirZoomNote">绿色竖线=堰顶；H0=堰上总水头，hk=2/3 H0。</div>
       </div>
     </section>
 
@@ -652,7 +681,8 @@ async function runCase(){
   setMsg(label);
   showBusy(label);
   const gateOn = !!($("#gateOn") && $("#gateOn").checked) ||
-                 !!($("#gate2On") && $("#gate2On").checked);
+                 !!($("#gate2On") && $("#gate2On").checked) ||
+                 !!($("#weirOn") && $("#weirOn").checked);
   if(gateOn && currentModel() !== "preissmann"){
     mode = "engineering";
     document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
@@ -725,6 +755,8 @@ function drawAll(R){
   safe("loop", () => drawLoop(R));
   safe("diag", () => drawDiag(R));
   safe("gate", () => drawGate(R));
+  safe("weirRate", () => drawWeirRate(R));
+  safe("weirZoom", () => drawWeirZoom(R));
   safe("slider", () => initTimeSlider(R));
 }
 
@@ -810,19 +842,24 @@ function drawFamily(R, sel){
   // 闸门标记（可多座）
   const _gs = (R.structures && R.structures.length) ? R.structures
             : ((R.gate && R.gate.on) ? [R.gate] : []);
-  _gs.forEach((g, gi)=>{
+  let _gi = 0, _wi = 0;
+  _gs.forEach((g)=>{
     if(g.x < xa || g.x > xb) return;
     const gx = X(g.x);
+    const isWeir = g.type === "weir";
+    const col = isWeir ? "#2f7d54" : "#b06a1f";
+    if(isWeir) _wi += 1; else _gi += 1;
     ctx.save();
-    ctx.setLineDash([4, 3]); ctx.strokeStyle = "#b06a1f"; ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = col; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(gx, pad.t); ctx.lineTo(gx, h - pad.b); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "#b06a1f";
+    ctx.fillStyle = col;
     ctx.beginPath();
     ctx.moveTo(gx, pad.t + 6); ctx.lineTo(gx - 5, pad.t - 2); ctx.lineTo(gx + 5, pad.t - 2);
     ctx.closePath(); ctx.fill();
     ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
-    ctx.fillText("闸" + (gi + 1) + " x=" + Math.round(g.x) + " m", gx + 6, pad.t + 16 + gi * 14);
+    ctx.fillText((isWeir ? "堰" : "闸") + (isWeir ? _wi : _gi) + " x=" +
+      Math.round(g.x) + " m", gx + 6, pad.t + 16 + (_gi + _wi - 1) * 14);
     ctx.restore();
   });
 
@@ -1196,6 +1233,7 @@ function renderGateSched(pts){
   (pts || []).forEach(p=>addGateSchedRow(p[0], p[1]));
 }
 function currentStructures(){
+  const arr0 = [];
   const arr = [];
   const gateOn = !!($("#gateOn") && $("#gateOn").checked);
   if(gateOn){
@@ -1216,7 +1254,18 @@ function currentStructures(){
               t_close: (+$("#gate2Tc").value) * 3600,
               t_ramp: (+$("#gate2Tr").value) * 3600});
   }
+  if($("#weirOn") && $("#weirOn").checked){
+    arr.push({type: "weir", s_pct: +$("#weirS").value,
+              b_w: +$("#weirBw").value, z_s: +$("#weirZ").value,
+              C: +$("#weirC").value});
+  }
   return arr;
+}
+
+function currentWeir(){
+  if(!($("#weirOn") && $("#weirOn").checked)) return null;
+  return {type: "weir", s_pct: +$("#weirS").value, b_w: +$("#weirBw").value,
+          z_s: +$("#weirZ").value, C: +$("#weirC").value};
 }
 
 function currentGate(){
@@ -1229,6 +1278,23 @@ function currentGate(){
   if(st) g.sched = st;
   return g;
 }
+function applyWeirPatch(w){
+  const on = $("#weirOn"), box = $("#weirBox");
+  if(on) on.checked = true;
+  if(box) box.style.display = "";
+  const set = (id,v)=>{ const el = $(id); if(el && v != null) el.value = v; };
+  if(w.s_pct != null) set("#weirS", w.s_pct);
+  if(w.b_w != null) set("#weirBw", w.b_w);
+  if(w.z_s != null) set("#weirZ", w.z_s);
+  if(w.C != null) set("#weirC", w.C);
+  if(mode !== "engineering"){
+    mode = "engineering";
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
+    if(typeof updateModeVisuals === "function") updateModeVisuals();
+  }
+  runCase();
+}
+
 function applyGatePatch(g){
   if(g.which === 2){
     const on2 = $("#gate2On"), box2 = $("#gate2Box");
@@ -1591,6 +1657,10 @@ async function runOpt(){
     if(btn){ btn.disabled = false; btn.textContent = "开始寻优"; }
   }
 }
+if($("#weirOn")) $("#weirOn").addEventListener("change", ()=>{
+  const box = $("#weirBox");
+  if(box) box.style.display = $("#weirOn").checked ? "" : "none";
+});
 if($("#gate2On")) $("#gate2On").addEventListener("change", ()=>{
   const box = $("#gate2Box");
   if(box) box.style.display = $("#gate2On").checked ? "" : "none";
@@ -1867,7 +1937,8 @@ function collectParams(){
     i0: +$("#i0").value, Q0: +$("#Q0").value, Qpeak: +$("#Qpeak").value,
     t_peak_h: +$("#tp").value, t_base_h: +$("#tb").value, t_end_h: +$("#te").value,
     h_dn: $("#hdn").value.trim() === "auto" ? -1 : +$("#hdn").value,
-    Nx: +$("#Nx").value, mode: mode, gate: currentGate()
+    Nx: +$("#Nx").value, mode: mode, gate: currentGate(),
+    weir: currentWeir()
   };
 }
 
@@ -1884,6 +1955,8 @@ function summaryText(){
        " m、开度" + $("#gateA0").value + "→" + $("#gateA1").value + " m" +
        (gateSchedData() ? "（多段：" +
          gateSchedData().map(p=>p[0] + "h:" + p[1] + "m").join(" → ") + "）" : "") : "") +
+    (currentWeir() ? "；含宽顶堰：堰位" + $("#weirS").value + "%、堰宽" +
+        $("#weirBw").value + " m、堰顶" + $("#weirZ").value + " m" : "") +
     (last.stations.length >= 2 ? "；首末断面峰现时间 " +
       (last.stations[0].peak_t/3600).toFixed(2) + "h → " +
       (last.stations[last.stations.length-1].peak_t/3600).toFixed(2) + "h" : "");
@@ -1938,6 +2011,10 @@ async function sendChat(){
       }else{
         wait.textContent = "出题失败：" + (r.error || "模型未返回题目");
       }
+    }else if(r.act === "weir_set"){
+      wait.textContent = (r.reply || "已更新宽顶堰参数") + "\n正在按新堰参数重算…";
+      applyWeirPatch(r.weir || {});
+      refreshChips(text);
     }else if(r.act === "gate_set"){
       wait.textContent = (r.reply || "已更新闸门参数") + "\n正在按新开度重算…";
       applyGatePatch(r.gate || {});
@@ -1996,7 +2073,11 @@ const PRESETS = {
                gate2:{s:70,b:6,z:0,mu:0.62,a0:1.0,a1:0.5,tc:1.2,tr:0.5}},
   two_gate_stagger: {mode:"engineering", L:2000, b:6, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
                Nx:81, gate:{s:30,b:6,z:0,mu:0.62,a0:1.0,a1:0.4,tc:0.5,tr:0.4},
-               gate2:{s:70,b:6,z:0,mu:0.62,a0:1.0,a1:0.7,tc:2.0,tr:0.5}}
+               gate2:{s:70,b:6,z:0,mu:0.62,a0:1.0,a1:0.7,tc:2.0,tr:0.5}},
+  weir_free: {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:20, tp:1, tb:2, te:8, hdn:1.5,
+               Nx:81, weir:{s:60,bw:5,z:0.5,C:0.35}},
+  weir_sub:  {mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:20, tp:1, tb:2, te:8, hdn:3.8,
+               Nx:81, weir:{s:60,bw:5,z:0.5,C:0.35}}
 };
 
 function applyPreset(key){
@@ -2019,6 +2100,13 @@ function applyPreset(key){
     set("#gateS",g.s); set("#gateB",g.b); set("#gateZ",g.z); set("#gateMu",g.mu);
     set("#gateA0",g.a0); set("#gateA1",g.a1); set("#gateTc",g.tc); set("#gateTr",g.tr);
     clearGateSched();
+  }
+  const w = p.weir || null;
+  const won = $("#weirOn"), wbox = $("#weirBox");
+  if(won){ won.checked = !!w; }
+  if(wbox){ wbox.style.display = w ? "" : "none"; }
+  if(w){
+    set("#weirS",w.s); set("#weirBw",w.bw); set("#weirZ",w.z); set("#weirC",w.C);
   }
   const g2 = p.gate2 || null;
   const g2on = $("#gate2On");
@@ -2383,8 +2471,8 @@ function drawGate(R){
   if(pick){
     if(arr.length > 1){
       if(pick.options.length !== arr.length){
-        pick.innerHTML = arr.map((g, i)=>'<option value="' + (i + 1) + '">第' +
-          (i + 1) + '座（' + Math.round(g.x) + ' m）</option>').join("");
+        pick.innerHTML = arr.map((g, i)=>'<option value="' + (i + 1) + '">' +
+          (g.type === "weir" ? "堰" : "闸") + (i + 1) + '（' + Math.round(g.x) + ' m）</option>').join("");
       }
       pick.style.display = "";
       sel = Math.max(1, Math.min(+pick.value || 1, arr.length));
@@ -2394,6 +2482,7 @@ function drawGate(R){
     }
   }
   const g = arr[sel - 1];
+  if(g.type === "weir"){ drawWeirGate(R, g); return; }
   const {ctx, w, h} = setup($("#cGate"), 280);
   const pad = {l:68, r:74, t:40, b:48};
   const t = g.t, Q = g.Q, hu = g.hu, hd = g.hd, a = g.a;
@@ -2497,21 +2586,220 @@ function drawGate(R){
   registerHover("cGate", {pad, w, h, x0: 0, x1: tmax,
     y0: 0, y1: qmax, xs: t,
     series: [{name: "过闸流量", color: "#2e6da4", ys: Q}],
-    fmt: i => "t = " + (t[i] / 3600).toFixed(2) + " h\n" +
-              "过闸 Q = " + Q[i].toFixed(2) + " m³/s\n" +
-              "闸上水位 = " + hu[i].toFixed(2) + " m\n" +
-              "闸下水位 = " + hd[i].toFixed(2) + " m\n" +
+    fmt: i => "t = " + (t[i] / 3600).toFixed(2) + " h" + String.fromCharCode(10) +
+              "过闸 Q = " + Q[i].toFixed(2) + " m³/s" + String.fromCharCode(10) +
+              "闸上水位 = " + hu[i].toFixed(2) + " m" + String.fromCharCode(10) +
+              "闸下水位 = " + hd[i].toFixed(2) + " m" + String.fromCharCode(10) +
               "开度 a = " + a[i].toFixed(2) + " m"});
 
   const note = $("#gateNote");
   if(note){
-    note.innerHTML = (arr.length > 1 ? ("第 " + sel + " 座（共 " + arr.length + " 座）；") : "") +
-      "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
+    note.innerHTML = "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
       (g._sched ? "；开度按多段过程线 " : "；开度 ") +
       g.a[0].toFixed(2) + " → " + g.a[g.a.length-1].toFixed(2) + " m；" +
       "最终过闸 Q=" + Q[Q.length-1].toFixed(2) + " m³/s，闸上最高水位 " +
       Math.max.apply(null, hu).toFixed(2) + " m。";
   }
+}
+
+function drawWeirGate(R, g){
+  const card = $("#gateCard");
+  if(card) card.style.display = "";
+  const {ctx, w, h} = setup($("#cGate"), 280);
+  const pad = {l:68, r:74, t:40, b:48};
+  const t = g.t || [], Q = g.Q || [], hu = g.hu || [], hd = g.hd || [];
+  const H0 = g.H0_hist || [];
+  const reg = g.reg_hist || [];
+  const sig = g.sig_hist || [];
+  const tmax = Math.max.apply(null, t.concat([1]));
+  const qmax = Math.max.apply(null, Q.concat([1])) * 1.12;
+  const hmax = Math.max.apply(null, hu.concat(hd).concat(H0).concat([0.1])) * 1.12;
+  const X = v => pad.l + (v / tmax) * (w - pad.l - pad.r);
+  const YQ = v => h - pad.b - (v / qmax) * (h - pad.t - pad.b);
+  const YH = v => h - pad.b - (v / hmax) * (h - pad.t - pad.b);
+
+  for(let i = 0; i + 1 < t.length; i++){
+    const r = reg[i] || "free";
+    ctx.fillStyle = r === "submerged" ? "rgba(176,106,31,.10)" :
+                    (r === "dry" ? "rgba(120,130,140,.12)" : "rgba(47,125,84,.07)");
+    ctx.fillRect(X(t[i]), pad.t, X(t[i + 1]) - X(t[i]) + 1, h - pad.t - pad.b);
+  }
+  ctx.font = "10px sans-serif";
+  for(let k = 0; k <= 4; k++){
+    const yy = pad.t + (h - pad.t - pad.b) * k / 4;
+    ctx.strokeStyle = "#eef1f5";
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.textAlign = "right";
+    ctx.fillText((qmax * (4 - k) / 4).toFixed(1), pad.l - 6, yy + 3);
+    ctx.textAlign = "left";
+    ctx.fillText((hmax * (4 - k) / 4).toFixed(1), w - pad.r + 6, yy + 3);
+  }
+  for(let k = 0; k <= 4; k++){
+    const xx = X(tmax * k / 4);
+    ctx.strokeStyle = "#f1f4f8";
+    ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, h - pad.b); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.textAlign = "center";
+    ctx.fillText((tmax * k / 4 / 3600).toFixed(1), xx, h - pad.b + 15);
+  }
+  const line = (ys, yFn, color, width, dash) => {
+    if(!ys.length) return;
+    ctx.save();
+    if(dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    ys.forEach((v, i) => { i ? ctx.lineTo(X(t[i]), yFn(v)) : ctx.moveTo(X(t[i]), yFn(v)); });
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+    ctx.restore();
+  };
+  line(Q, YQ, "#2e6da4", 2.2);
+  line(hu, YH, "#b23c4a", 2.0);
+  line(hd, YH, "#2f7d54", 1.8);
+  line(H0, YH, "#6a4c93", 1.6, [5, 3]);
+
+  ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.moveTo(w - pad.r, pad.t); ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.stroke();
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif";
+  ctx.textAlign = "left"; ctx.fillText("过堰 Q (m³/s)", 4, pad.t - 18);
+  ctx.textAlign = "right"; ctx.fillText("水位 / H0 (m)", w - 4, pad.t - 18);
+  ctx.textAlign = "center"; ctx.fillText("时间 t (h)", (pad.l + w - pad.r) / 2, h - 10);
+
+  ctx.font = "10.5px sans-serif";
+  const legend = [["#2e6da4", false, "过堰流量"], ["#b23c4a", false, "堰上水位"],
+                  ["#2f7d54", false, "堰下水位"], ["#6a4c93", true, "堰上水头 H0"]];
+  let lx = pad.l + 4;
+  const ly = h - pad.b - 10;
+  legend.forEach(([c, dash, label]) => {
+    ctx.save(); if(dash) ctx.setLineDash([4, 2]);
+    ctx.strokeStyle = c; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lx, ly - 4); ctx.lineTo(lx + 16, ly - 4); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = "#41556b"; ctx.textAlign = "left";
+    ctx.fillText(label, lx + 20, ly);
+    lx += 20 + ctx.measureText(label).width + 14;
+  });
+
+  registerHover("cGate", {pad, w, h, x0: 0, x1: tmax,
+    y0: 0, y1: qmax, xs: t,
+    series: [{name: "过堰流量", color: "#2e6da4", ys: Q}],
+    fmt: i => "t = " + (t[i] / 3600).toFixed(2) + " h" + String.fromCharCode(10) +
+              "过堰 Q = " + Q[i].toFixed(2) + " m³/s" + String.fromCharCode(10) +
+              "堰上水位 = " + hu[i].toFixed(2) + " m" + String.fromCharCode(10) +
+              "堰下水位 = " + hd[i].toFixed(2) + " m" + String.fromCharCode(10) +
+              "堰上水头 H0 = " + (H0[i] != null ? H0[i].toFixed(2) : "—") + " m" +
+              String.fromCharCode(10) +
+              "流态 = " + (reg[i] || "—") + "，σ = " +
+              (sig[i] != null ? sig[i] : "—")});
+
+  const note = $("#gateNote");
+  if(note){
+    note.innerHTML = "宽顶堰 " + Math.round(g.x) + " m，堰宽 " + g.b_w + " m，C=" + g.C +
+      "；堰顶 " + g.z_s + " m；当前状态 " + (g.regime || "—") +
+      "，σ=" + g.sigma + "，H0=" + g.H0 + " m；最终过堰 Q=" +
+      (Q.length ? Q[Q.length - 1].toFixed(2) : "—") + " m³/s。";
+  }
+}
+
+function drawWeirRate(R){
+  const arr = (R.structures || []).filter(g=>g.type === "weir");
+  const card = $("#weirRateCard");
+  if(card) card.style.display = arr.length ? "" : "none";
+  if(!arr.length) return;
+  const g = arr[0];
+  const cv = $("#cWeirRate");
+  if(!cv) return;
+  const {ctx, w, h} = setup(cv, 280);
+  const pad = {l:62, r:20, t:26, b:40};
+  const H0 = (g.H0_hist || []).slice();
+  const Q = (g.Q || []).slice();
+  const n = Math.min(H0.length, Q.length);
+  const hmax = Math.max.apply(null, H0.concat([0.5])) * 1.12;
+  const qmax = Math.max.apply(null, Q.concat([1])) * 1.12;
+  const X = v => pad.l + v / hmax * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - v / qmax * (h - pad.t - pad.b);
+  ctx.strokeStyle = "#eef1f5";
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + (h-pad.t-pad.b)*k/4;
+    ctx.beginPath(); ctx.moveTo(pad.l,yy); ctx.lineTo(w-pad.r,yy); ctx.stroke();
+    ctx.fillStyle = "#8b98a6"; ctx.font = "10px sans-serif"; ctx.textAlign = "right";
+    ctx.fillText((qmax*(4-k)/4).toFixed(1), pad.l-6, yy+3);
+  }
+  ctx.strokeStyle = "#2e6da4"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<=60;i++){
+    const H = hmax * i / 60, q = g.C * g.b_w * Math.pow(H, 1.5);
+    i ? ctx.lineTo(X(H), Y(q)) : ctx.moveTo(X(H), Y(q));
+  }
+  ctx.stroke();
+  ctx.strokeStyle = "#b23c4a"; ctx.lineWidth = 2; ctx.setLineDash([5,3]);
+  ctx.beginPath();
+  for(let i=0;i<n;i++){
+    const Qw = g.C * g.b_w * Math.pow(Math.max(H0[i],0), 1.5) * (g.sig_hist && g.sig_hist[i] || 1);
+    i ? ctx.lineTo(X(H0[i]), Y(Qw)) : ctx.moveTo(X(H0[i]), Y(Qw));
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#6a4c93";
+  for(let i=0;i<n;i+=Math.max(1, Math.floor(n/40))){
+    ctx.beginPath(); ctx.arc(X(H0[i]), Y(Q[i]), 2.2, 0, 2*Math.PI); ctx.fill();
+  }
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif";
+  ctx.textAlign = "center"; ctx.fillText("堰上水头 H0 (m)", (pad.l+w-pad.r)/2, h-12);
+  ctx.save(); ctx.translate(10,(pad.t+h-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText("过堰 Q (m³/s)",0,0); ctx.restore();
+  const note = $("#weirRateNote");
+  if(note) note.textContent = "自由曲线 Q=C·b·H0^1.5；虚线为按淹没系数折算；紫点=本次运行（" +
+    n + " 个采样）。";
+}
+
+function drawWeirZoom(R){
+  const arr = (R.structures || []).filter(g=>g.type === "weir");
+  const card = $("#weirZoomCard");
+  if(card) card.style.display = arr.length ? "" : "none";
+  if(!arr.length) return;
+  const g = arr[0];
+  const cv = $("#cWeirZoom");
+  if(!cv || !(R.h_snap || []).length) return;
+  const {ctx, w, h} = setup(cv, 240);
+  const pad = {l:56, r:18, t:24, b:36};
+  const x = R.x, hs = R.h_snap[R.h_snap.length - 1];
+  const xw = g.x, win = Math.max(80, Math.min(400, 0.08 * (x[x.length-1] - x[0])));
+  const i0 = R.meta.i0;
+  const xa = Math.max(x[0], xw - win), xb = Math.min(x[x.length-1], xw + win);
+  let zmin = 1e9, zmax = -1e9;
+  x.forEach((v,i)=>{
+    if(v < xa || v > xb) return;
+    const bed = -i0 * v, z = bed + hs[i];
+    zmin = Math.min(zmin, bed, g.z_s - i0 * v); zmax = Math.max(zmax, z, g.z_s - i0 * v);
+  });
+  const sp = Math.max(zmax - zmin, 0.2); zmin -= sp*0.15; zmax += sp*0.15;
+  const X = v => pad.l + (v - xa) / (xb - xa || 1) * (w - pad.l - pad.r);
+  const Y = v => h - pad.b - (v - zmin) / (zmax - zmin || 1) * (h - pad.t - pad.b);
+  ctx.beginPath();
+  let started = false;
+  x.forEach((v,i)=>{
+    if(v < xa || v > xb) return;
+    const z = -i0 * v + hs[i];
+    started ? ctx.lineTo(X(v),Y(z)) : ctx.moveTo(X(v),Y(z)); started = true;
+  });
+  ctx.strokeStyle = "#1f4e79"; ctx.lineWidth = 2.6; ctx.stroke();
+  ctx.strokeStyle = "#c3ccd5"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0;i<x.length;i+=1){
+    if(x[i] < xa || x[i] > xb) continue;
+    const bed = -i0*x[i];
+    i ? ctx.lineTo(X(x[i]),Y(bed)) : ctx.moveTo(X(x[i]),Y(bed));
+  }
+  ctx.stroke();
+  ctx.strokeStyle = "#2f7d54"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(X(xw), pad.t); ctx.lineTo(X(xw), h - pad.b); ctx.stroke();
+  ctx.fillStyle = "#2f7d54"; ctx.font = "600 10.5px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("堰顶 z_c=" + g.z_s.toFixed(2) + " m", X(xw), pad.t - 6);
+  ctx.fillStyle = "#5b6b7b"; ctx.font = "11px sans-serif";
+  ctx.textAlign = "center"; ctx.fillText("里程 (m)", (pad.l+w-pad.r)/2, h-10);
+  const note = $("#weirZoomNote");
+  if(note) note.textContent = "窗口 ±" + Math.round(win) + " m；H0=" + g.H0 +
+    " m，hk=2/3H0=" + (g.H0*2/3).toFixed(2) + " m；状态 " + g.regime + "。";
 }
 
 function drawCharChart(r){

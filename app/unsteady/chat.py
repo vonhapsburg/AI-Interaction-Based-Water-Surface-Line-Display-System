@@ -158,6 +158,29 @@ def parse_gate(text):
     return out or None
 
 
+def parse_weir(text):
+    """宽顶堰参数：堰位、堰宽、堰顶高程、流量系数。"""
+    t = (text or "").strip()
+    if not t or "堰" not in t:
+        return None
+    out = {"type": "weir"}
+    m = re.search(r"堰位[^0-9]{0,8}(\d+(?:\.\d+)?)\s*(?:%|％)", t)
+    if m:
+        out["s_pct"] = float(m.group(1))
+    m = re.search(r"堰宽[^0-9]{0,8}(\d+(?:\.\d+)?)", t)
+    if m:
+        out["b_w"] = float(m.group(1))
+    m = re.search(r"堰顶(?:高程)?[^0-9]{0,8}(\d+(?:\.\d+)?)", t)
+    if m:
+        out["z_s"] = float(m.group(1))
+    m = re.search(r"流量系数[^0-9]{0,8}(\d+(?:\.\d+)?)", t)
+    if m:
+        out["C"] = float(m.group(1))
+    if len(out) == 1:
+        return None
+    return out
+
+
 def parse_schedule_intent(text):
     """调度口语 → 约束/目标（规则，不经过模型）。"""
     t = text or ""
@@ -467,6 +490,11 @@ def chips(text, params=None, summary="", limit=3):
     out = []
     _g = (params or {}).get("gate") or {}
     _arr = _g.get("structures") or ([_g] if (_g.get("on") or _g.get("s_pct") is not None) else [])
+    _weir = (params or {}).get("weir") or {}
+    _has_weir = bool(_weir) or any((x or {}).get("type") == "weir" for x in
+                                   ((params or {}).get("gate") or {}).get("structures") or [])
+    if _has_weir:
+        out.extend(["堰顶抬高到0.8米会怎样？", "下游水位调到3.8米看淹没", "去掉宽顶堰"])
     if _arr:
         if len(_arr) >= 2:
             out.extend(["第二座闸再关小一点", "两座闸怎么错峰？", "随机双闸试一下"])
