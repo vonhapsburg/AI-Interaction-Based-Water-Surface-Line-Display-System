@@ -432,6 +432,22 @@ window.addEventListener("unhandledrejection", function(e){
           </div>
           <div class="hintline">闸孔公式 Q = μ·b·a·√(2g·H)，以局部水头损失形式加入方程，闸前水面单调过渡。</div>
         </div>
+
+        <label class="gateToggle" style="margin-top:8px;"><input type="checkbox" id="gate2On"> 加第二座闸（联合演进）</label>
+        <div class="gateBox" id="gate2Box" style="display:none;">
+          <div class="grid2">
+            <div class="field"><label>第二座闸位（占渠长 %）</label><input id="gate2S" type="number" step="1" value="75"></div>
+            <div class="field"><label>闸宽 b_g2 (m)</label><input id="gate2B" type="number" step="0.1" value="5"></div>
+            <div class="field"><label>底槛高程 z_s2 (m)</label><input id="gate2Z" type="number" step="0.1" value="0"></div>
+            <div class="field"><label>流量系数 μ2</label><input id="gate2Mu" type="number" step="0.01" value="0.62"></div>
+            <div class="field"><label>初始开度 a₀2 (m)</label><input id="gate2A0" type="number" step="0.1" value="1.0"></div>
+            <div class="field"><label>终止开度 a₁2 (m)</label><input id="gate2A1" type="number" step="0.1" value="0.5"></div>
+            <div class="field"><label>开始关闭2 (h)</label><input id="gate2Tc" type="number" step="0.1" value="1.2"></div>
+            <div class="field"><label>关闭历时2 (h)</label><input id="gate2Tr" type="number" step="0.1" value="0.5"></div>
+          </div>
+          <div class="hintline">第二座闸用单段线性关闭；两座闸各自在所在网格段加局部水头损失。</div>
+        </div>
+
         <button id="run">计算</button>
         <button id="bwBtn" type="button" style="margin-top:8px;width:100%;">预览回水（给定下游水位 → 反推沿程水面线）</button>
         <div class="bwbox" id="bwBox" style="display:none;"><div class="t" id="bwText"></div><canvas id="cBw"></canvas></div>
@@ -525,7 +541,9 @@ window.addEventListener("unhandledrejection", function(e){
     </section>
 
     <section class="card" id="gateCard" style="display:none;">
-      <div class="card-h">⑤ 闸门：开度、过闸流量与闸上水位 <span class="tag">内边界</span></div>
+      <div class="card-h">⑤ 闸门：开度、过闸流量与闸上水位
+        <select id="gatePick" style="display:none;width:auto;margin-left:8px;"></select>
+        <span class="tag">内边界</span></div>
       <div class="card-b">
         <div class="plot"><canvas id="cGate" class="base" height="260"></canvas><canvas id="ovlGate" class="ovl"></canvas></div>
         <div class="note" id="gateNote">蓝色=过闸流量，红色=闸上水位，绿色=闸下水位，灰色虚线=开度。</div>
@@ -627,23 +645,15 @@ async function runCase(){
     ? "全方程隐式求解中（Preissmann + Newton）…" : "扩散波显式推进中…";
   setMsg(label);
   showBusy(label);
-  const gateOn = !!($("#gateOn") && $("#gateOn").checked);
+  const gateOn = !!($("#gateOn") && $("#gateOn").checked) ||
+                 !!($("#gate2On") && $("#gate2On").checked);
   if(gateOn && currentModel() !== "preissmann"){
     mode = "engineering";
     document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
     if(typeof updateModeVisuals === "function") updateModeVisuals();
   }
-  const gate = gateOn ? {
-    on: true,
-    s: (+$("#gateS").value) / 100 * (+$("#L").value),
-    b_g: +$("#gateB").value, z_s: +$("#gateZ").value, mu: +$("#gateMu").value,
-    a0: +$("#gateA0").value, a_end: +$("#gateA1").value,
-    t_close: (+$("#gateTc").value) * 3600, t_ramp: (+$("#gateTr").value) * 3600
-  } : null;
-  if(gate){
-    const st = gateSchedData();
-    if(st) gate.sched = st;
-  }
+  const structs = currentStructures();
+  const gate = structs.length ? {structures: structs} : null;
   const payload = {
     model: currentModel(),
     gate: gate,
@@ -661,9 +671,11 @@ async function runCase(){
     if(!r.ok){ setMsg("计算失败：" + (r.error || "未知原因"), "err"); return; }
     last = r.result;
     last.ms = performance.now() - t0;
-    if(gate && last.gate){
-      last.gate._tc = gate.t_close; last.gate._tr = gate.t_ramp;
-      last.gate._sched = !!gate.sched;
+    if(structs.length && last.structures){
+      last.structures.forEach((s, i)=>{
+        const src = structs[i] || {};
+        s._tc = src.t_close; s._tr = src.t_ramp; s._sched = !!src.sched;
+      });
     }
     drawAll(last);
     autoRefreshSide();   // 自动刷新“回水预览”和“特征线”
@@ -789,9 +801,12 @@ function drawFamily(R, sel){
   ctx.lineJoin = "round"; ctx.stroke();
   ctx.restore();
 
-  // 闸门标记
-  if(R.gate && R.gate.on && R.gate.x >= xa && R.gate.x <= xb){
-    const gx = X(R.gate.x);
+  // 闸门标记（可多座）
+  const _gs = (R.structures && R.structures.length) ? R.structures
+            : ((R.gate && R.gate.on) ? [R.gate] : []);
+  _gs.forEach((g, gi)=>{
+    if(g.x < xa || g.x > xb) return;
+    const gx = X(g.x);
     ctx.save();
     ctx.setLineDash([4, 3]); ctx.strokeStyle = "#b06a1f"; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(gx, pad.t); ctx.lineTo(gx, h - pad.b); ctx.stroke();
@@ -801,9 +816,9 @@ function drawFamily(R, sel){
     ctx.moveTo(gx, pad.t + 6); ctx.lineTo(gx - 5, pad.t - 2); ctx.lineTo(gx + 5, pad.t - 2);
     ctx.closePath(); ctx.fill();
     ctx.font = "600 11px sans-serif"; ctx.textAlign = "left";
-    ctx.fillText("闸 x=" + Math.round(R.gate.x) + " m", gx + 6, pad.t + 16);
+    ctx.fillText("闸" + (gi + 1) + " x=" + Math.round(g.x) + " m", gx + 6, pad.t + 16 + gi * 14);
     ctx.restore();
-  }
+  });
 
   // 标签与坐标轴
   const xi = Math.floor(x.length*0.62);
@@ -1173,6 +1188,30 @@ function renderGateSched(pts){
   clearGateSched();
   (pts || []).forEach(p=>addGateSchedRow(p[0], p[1]));
 }
+function currentStructures(){
+  const arr = [];
+  const gateOn = !!($("#gateOn") && $("#gateOn").checked);
+  if(gateOn){
+    const g = {on: true, s_pct: +$("#gateS").value,
+               b_g: +$("#gateB").value, z_s: +$("#gateZ").value,
+               mu: +$("#gateMu").value, a0: +$("#gateA0").value,
+               a_end: +$("#gateA1").value,
+               t_close: (+$("#gateTc").value) * 3600,
+               t_ramp: (+$("#gateTr").value) * 3600};
+    const st = gateSchedData();
+    if(st) g.sched = st;
+    arr.push(g);
+  }
+  if($("#gate2On") && $("#gate2On").checked){
+    arr.push({s_pct: +$("#gate2S").value, b_g: +$("#gate2B").value,
+              z_s: +$("#gate2Z").value, mu: +$("#gate2Mu").value,
+              a0: +$("#gate2A0").value, a_end: +$("#gate2A1").value,
+              t_close: (+$("#gate2Tc").value) * 3600,
+              t_ramp: (+$("#gate2Tr").value) * 3600});
+  }
+  return arr;
+}
+
 function currentGate(){
   const on = !!($("#gateOn") && $("#gateOn").checked);
   if(!on) return null;
@@ -1515,6 +1554,12 @@ async function runOpt(){
     if(btn){ btn.disabled = false; btn.textContent = "开始寻优"; }
   }
 }
+if($("#gate2On")) $("#gate2On").addEventListener("change", ()=>{
+  const box = $("#gate2Box");
+  if(box) box.style.display = $("#gate2On").checked ? "" : "none";
+});
+if($("#gatePick")) $("#gatePick").addEventListener("change", ()=>{ if(last) drawGate(last); });
+
 if($("#optBtn")) $("#optBtn").addEventListener("click", runOpt);
 
 
@@ -2257,10 +2302,27 @@ async function runChar(kind){
 /* ⑤ 闸门：开度 / 过闸流量 / 闸上闸下水位 */
 function drawGate(R){
   const card = $("#gateCard");
-  const g = R.gate;
   if(!card) return;
-  if(!g || !g.on){ card.style.display = "none"; return; }
+  const arr = (R.structures && R.structures.length) ? R.structures
+            : ((R.gate && R.gate.on) ? [R.gate] : []);
+  if(!arr.length){ card.style.display = "none"; return; }
   card.style.display = "";
+  const pick = $("#gatePick");
+  let sel = 1;
+  if(pick){
+    if(arr.length > 1){
+      if(pick.options.length !== arr.length){
+        pick.innerHTML = arr.map((g, i)=>'<option value="' + (i + 1) + '">第' +
+          (i + 1) + '座（' + Math.round(g.x) + ' m）</option>').join("");
+      }
+      pick.style.display = "";
+      sel = Math.max(1, Math.min(+pick.value || 1, arr.length));
+    }else{
+      pick.style.display = "none";
+      sel = 1;
+    }
+  }
+  const g = arr[sel - 1];
   const {ctx, w, h} = setup($("#cGate"), 280);
   const pad = {l:68, r:74, t:40, b:48};
   const t = g.t, Q = g.Q, hu = g.hu, hd = g.hd, a = g.a;
@@ -2372,7 +2434,8 @@ function drawGate(R){
 
   const note = $("#gateNote");
   if(note){
-    note.innerHTML = "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
+    note.innerHTML = (arr.length > 1 ? ("第 " + sel + " 座（共 " + arr.length + " 座）；") : "") +
+      "闸位 " + Math.round(g.x) + " m，闸宽 " + g.b_g + " m，μ=" + g.mu +
       (g._sched ? "；开度按多段过程线 " : "；开度 ") +
       g.a[0].toFixed(2) + " → " + g.a[g.a.length-1].toFixed(2) + " m；" +
       "最终过闸 Q=" + Q[Q.length-1].toFixed(2) + " m³/s，闸上最高水位 " +

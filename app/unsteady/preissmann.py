@@ -138,7 +138,10 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     gate_on = bool(gate_list)
 
     def _mk_struct(g):
-        s_g = float(g.get("s", 0.5 * L))
+        _s = g.get("s")
+        if _s is None:
+            _s = float(g.get("s_pct", 50.0)) / 100.0 * L
+        s_g = float(_s)
         b_g = float(g.get("b_g", b))
         z_s = float(g.get("z_s", 0.0))
         mu_g = float(g.get("mu", 0.62))
