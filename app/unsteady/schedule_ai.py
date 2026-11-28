@@ -54,10 +54,14 @@ def _solve(base, gate):
     hn = us.normal_depth(b, m, n, i0, base["Q0"])
     hd = base.get("h_dn")
     hd = hn if hd is None or hd == "auto" or _num(hd, -1) < 0 else _num(hd, hn)
+    # 调度筛选：31 网格 + 60 s 步长，保证多方案/多轮会话的响应；
+    # 推荐方案在演进页用默认网格与步长复核。
+    _nx = min(int(base.get("Nx") or 31), 31)
     res = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=base["Q0"], Qpeak=base["Qpeak"],
                  t_peak=base["t_peak"], t_base=base["t_base"], t_end=base["t_end"],
-                 h_dn=hd, h_init=None, Nx=int(base.get("Nx") or 61),
-                 snap_hours=[base["t_end"] / 3600.0], gate=gate)
+                 h_dn=hd, h_init=None, Nx=_nx,
+                 snap_hours=[base["t_end"] / 3600.0], gate=gate,
+                 dt=60.0)
     return res
 
 

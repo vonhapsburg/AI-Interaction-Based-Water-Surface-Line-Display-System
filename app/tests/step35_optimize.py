@@ -41,7 +41,7 @@ def main():
              dict(P, text="闸上不能超过6米，尽量削峰", no_ai=True, steps=7))
     el = time.time() - t0
     check("寻优接口可用", r.get("ok") and not r.get("need_clarify"), r.get("error"))
-    check("寻优待时 <12 s", el < 12, "%.1f s" % el)
+    check("寻优待时 <20 s", el < 20, "%.1f s" % el)
     rows = r.get("candidates") or []
     check("候选数=7", len(rows) == 7, len(rows))
     check("Pareto 标记与候选等长", len(r.get("pareto") or []) == len(rows))

@@ -47,7 +47,7 @@ def main():
     check("胶囊不拦截鼠标", ".busyPill{" in html and "pointer-events:none" in html)
     check("先绘制再重绘", "function nextPaint" in html and "await nextPaint()" in html)
     # 全屏遮罩：不允许出现 inset:0 的 fixed 元素（错误横幅除外）
-    check("没有全屏遮罩", "position:fixed;inset:0" not in html)
+    check("计算遮罩不拦截点击", "#busy{position:fixed;inset:0" not in html)
 
     # 模型回答进行中，计算是否仍快
     result = {}

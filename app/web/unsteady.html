@@ -147,8 +147,8 @@
        white-space:pre;box-shadow:0 4px 14px rgba(0,0,0,.18);}
 
   /* 计算中遮罩 */
-  #busy{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
-        background:rgba(246,249,252,.55);backdrop-filter:blur(1px);}
+  #busy{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;
+        display:none;align-items:center;justify-content:center;pointer-events:none;}
   #busy .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 26px;
              box-shadow:0 10px 30px rgba(20,40,60,.15);display:flex;align-items:center;gap:14px;}
   .spin{width:26px;height:26px;border-radius:50%;border:3px solid #dbe6f0;border-top-color:#2e6da4;

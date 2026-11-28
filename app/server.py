@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-26-gate20"
+BUILD_ID = "2026-11-28-gate21"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -757,7 +757,8 @@ class Handler(SimpleHTTPRequestHandler):
                 h_dn = float(h_prof[-1] + amp)
                 res = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Q0,
                              t_peak=60.0, t_base=120.0, t_end=t_end,
-                             h_dn=h_dn, h_init=h_prof, Nx=Nx, snap_hours=[0.0])
+                             h_dn=h_dn, h_init=h_prof, Nx=Nx, snap_hours=[0.0],
+                             compat_init=False)
                 T = np.asarray(res["t"], float)
                 pts = []
                 for st in res["stations"]:
@@ -1116,11 +1117,14 @@ class Handler(SimpleHTTPRequestHandler):
                     alist = (intent or {}).get("plans_a") or [0.6, 0.4]
                     plans = [{"name": "关到 %.2f m" % a, "a_end": a} for a in alist]
 
+                Nx = min(Nx, 61)
+
                 def solve_plan(gate):
                     return up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                                   t_peak=tp, t_base=tb, t_end=te, h_dn=hd,
                                   h_init=np.full(Nx, hn), Nx=Nx,
-                                  snap_hours=[te / 3600.0], gate=gate)
+                                  snap_hours=[te / 3600.0], gate=gate,
+                                  dt=30.0)
 
                 import time as _t
                 t0 = _t.time()

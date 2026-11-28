@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from .solver import geom, normal_depth
+from .solver import kinematic_speed, normal_depth
 
 G = 9.81
 
@@ -45,12 +45,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         Q0=10.0, Qpeak=30.0, t_peak=3600.0, t_base=7200.0, t_end=12 * 3600.0,
         h_dn=None, h_init=None, Nx=81, theta=0.7, psi=0.5, dt=None,
         snap_hours=None, station_fracs=None, max_newton=6, tol=1e-7,
-        cost_budget=1.2e11, gate=None):
+        cost_budget=1.2e11, gate=None, compat_init=True):
     """跑一次全方程非恒定演进（缓流）。
 
     返回结构与扩散波一致，便于同一页面共用绘图。
     """
-    i0 = max(float(i0), 1e-6)
+    i0 = float(i0)
+    if i0 <= 0:
+        raise ValueError("底坡 i0 必须大于 0；本模块不支持平坡/负坡，请改用恒定流模块或调整坡度")
     L = float(L)
     Q0 = float(max(Q0, 1e-3))
     Qpeak = float(max(Qpeak, Q0))
@@ -75,16 +77,25 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     x = np.linspace(0.0, L, Nx)
 
     h_start = (np.array(h_init, dtype=float) if h_init is not None else np.full(Nx, h_n0))
+    if len(h_start) != Nx:
+        h_start = np.interp(x, np.linspace(0.0, L, len(h_start)), h_start)
+    if compat_init and abs(h_start[-1] - h_dn) > 1e-9:
+        # 下游给定水深与初始场不一致时，用二次权重平滑过渡，避免 t=0 的阶跃假波
+        _w = np.linspace(0.0, 1.0, Nx) ** 2
+        h_start = h_start + (h_dn - h_start[-1]) * _w
     h = h_start.copy()
-    if len(h) != Nx:
-        h = np.interp(x, np.linspace(0.0, L, len(h)), h)
     Q = np.full(Nx, Q0)
 
-    # 时间步：Preissmann 无条件稳定，但精度要求 Δt 小于 ~dx/c
+    # 时间步：Preissmann 无条件稳定；取 Courant≈1 以控制数值耗散，
+    # 用时由 cost_budget 的自动加粗网格兜底（不再用 3dx/c 的粗步长）。
     c_ref = math.sqrt(G * max(h_n0, 0.05))
     dt_given = dt is not None
+
+    def _default_dt(dx_):
+        return float(min(max(1.0 * dx_ / max(c_ref, 0.1), 10.0), 60.0))
+
     if dt is None:
-        dt = float(min(max(3.0 * dx / max(c_ref, 0.1), 15.0), 90.0))
+        dt = _default_dt(dx)
     steps = int(math.ceil(t_end / dt))
 
     # 耗时控制：每次 Newton 要解 (2N)³ 的方程组，N 大时极慢。
@@ -93,7 +104,7 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     _budget = cost_budget
     while Nx > 81:
         _dx = L / (Nx - 1)
-        _dt = dt if dt is not None else float(min(max(3.0 * _dx / max(c_ref, 0.1), 15.0), 90.0))
+        _dt = dt if dt is not None else _default_dt(_dx)
         _steps = int(math.ceil(t_end / _dt))
         if _steps * (2 * Nx) ** 3 <= _budget:
             break
@@ -105,9 +116,12 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         h = (np.array(h_init, dtype=float) if h_init is not None else np.full(Nx, h_n0))
         if len(h) != Nx:
             h = np.interp(x, np.linspace(0.0, L, len(h)), h)
+        if compat_init and abs(h[-1] - h_dn) > 1e-9:
+            _w = np.linspace(0.0, 1.0, Nx) ** 2
+            h = h + (h_dn - h[-1]) * _w
         Q = np.full(Nx, Q0)
         if not dt_given:
-            dt = float(min(max(3.0 * dx / max(c_ref, 0.1), 15.0), 90.0))
+            dt = _default_dt(dx)
         steps = int(math.ceil(t_end / dt))
 
     auto_coarsened = bool(_auto or Nx < Nx_req)
@@ -149,6 +163,10 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 "hist": {"t": [], "a": [], "Q": [], "hu": [], "hd": []}}
 
     structs = [_mk_struct(g) for g in gate_list]
+    for _st in structs:
+        _amins = [_st["a0"], _st["a_end"]] + [float(p[1]) for p in _st["sched"]]
+        if min(_amins) < 0.02:
+            raise ValueError("闸门开度低于 0.02 m：本模块不支持全关断流，请把最小开度设在 0.02 m 以上")
 
     def struct_a(st, t):
         if not st:
@@ -185,9 +203,15 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             stations.add(_st["seg"])
     stations = sorted(stations)
     t_hist, h_st, Q_st = [], [], []
+    max_courant = 0.0
     rec_every = max(1, steps // 600)
 
     def record(t_now):
+        nonlocal max_courant
+        _A = _area(b, m, h)
+        _c = np.sqrt(G * np.maximum(h, 1e-6))
+        _cour = float(np.max((np.abs(Q) / np.maximum(_A, 1e-9) + _c) * dt / dx))
+        max_courant = max(max_courant, _cour)
         t_hist.append(t_now)
         h_st.append([float(h[i]) for i in stations])
         Q_st.append([float(Q[i]) for i in stations])
@@ -203,7 +227,9 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
     inflow = outflow = 0.0
     iters_total = 0
     failed = 0
+    max_residual = 0.0
     t = 0.0
+    t_prev = 0.0
 
     for step in range(steps):
         t_new = t + dt
@@ -214,6 +240,10 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         h_old, Q_old = h.copy(), Q.copy()
         hLo, hRo = h_old[:-1], h_old[1:]
         qLo, qRo = Q_old[:-1], Q_old[1:]
+        _Abar_o = psi * _area(b, m, hRo) + (1 - psi) * _area(b, m, hLo)
+        _Qbar_o = psi * qRo + (1 - psi) * qLo
+        _Rbar_o = psi * _radius(b, m, hRo) + (1 - psi) * _radius(b, m, hLo)
+        Sf_old_seg = _sf(n, _Qbar_o, _Abar_o, _Rbar_o)
 
         def seg_res(hL, qL, hR, qR):
             """一个渠段的（连续, 动量）残差；左右节点显式分开传入。"""
@@ -227,7 +257,8 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             Abar = psi * AR + (1 - psi) * AL
             Qbar = psi * qR + (1 - psi) * qL
             Rbar = psi * RR + (1 - psi) * RL
-            Sf = _sf(n, Qbar, Abar, Rbar)
+            Sf = (theta * _sf(n, Qbar, Abar, Rbar)
+                  + (1 - theta) * Sf_old_seg)
             dh_new = (hR - hL) / dx
             dh_old = (hRo - hLo) / dx
             M = (psi * (qR - qRo) + (1 - psi) * (qL - qLo)) / dt \
@@ -241,8 +272,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                     a_eff = max(_st["a_now"], 1e-3)
                     _seg = _st["seg"]
                     qq = qL[_seg] * abs(qL[_seg])
-                    M[_seg] = M[_seg] + Abar[_seg] * qq / (
-                        2.0 * (_st["mu"] * _st["b_g"] * a_eff) ** 2 * dx)
+                    head = qq / (2.0 * (_st["mu"] * _st["b_g"] * a_eff) ** 2)
+                    if _st["z_s"] > 0:
+                        # 底坎以上可用水头：不足时用惩罚项把过流压向
+                        # Q = μ b a √(2g(h_u - z_s))，避免“设了底坎却不算”的假结果
+                        avail = max(float(hL[_seg]) - _st["z_s"], 1e-6)
+                        over = max(head - avail, 0.0)
+                        head = head + 20.0 * over
+                    M[_seg] = M[_seg] + Abar[_seg] * head / dx
             return C, M
 
         def residual(U):
@@ -257,9 +294,13 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
         U = np.concatenate([h, Q])
         F = residual(U)
+        _scale = tol * max(1.0, Qpeak)
+        converged = False
+        _fail_step = False
         it = 0
         for it in range(max_newton):
-            if np.max(np.abs(F)) < tol * max(1.0, Qpeak):
+            if np.max(np.abs(F)) < _scale:
+                converged = True
                 break
             # 逐段局部数值 Jacobian（按配对索引写入，避免二维切片广播）
             J = np.zeros((2 * Nx, 2 * Nx))
@@ -289,12 +330,22 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 dU = np.linalg.solve(J, -base)
             except np.linalg.LinAlgError:
                 failed += 1
-                dU = np.zeros_like(U)
+                _fail_step = True
+                break
+            if not np.all(np.isfinite(dU)):
+                failed += 1
+                _fail_step = True
+                break
             U = U + dU
             # 保正
             U[:Nx] = np.maximum(U[:Nx], 1e-4)
             F = residual(U)
+        if not converged:
+            converged = bool(np.max(np.abs(F)) < _scale)
+        if not converged and not _fail_step:
+            failed += 1
         iters_total += (it + 1)
+        max_residual = max(max_residual, float(np.max(np.abs(F))))
 
         h = U[:Nx]
         Q = U[Nx:]
@@ -304,7 +355,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         if step % rec_every == 0 or step == steps - 1:
             record(t)
         while si < len(snap_t) and snap_t[si] <= t + 1e-9:
-            h_snap.append(h.copy()); t_snap.append(float(snap_t[si])); si += 1
+            _ts = float(snap_t[si])
+            if t - t_prev > 1e-12:
+                _w = (_ts - t_prev) / (t - t_prev)
+                _hs = h_old + _w * (h - h_old)
+            else:
+                _hs = h.copy()
+            h_snap.append(_hs); t_snap.append(_ts); si += 1
+        t_prev = t
 
     # 质量守恒（与扩散波同口径）
     storage1 = float(np.sum(_area(b, m, h)) * dx)
@@ -329,10 +387,11 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "peak_t": round(float(t_hist[ipk]), 1),
         })
 
+    h_peak_normal = float(normal_depth(b, m, n, i0, Qpeak))
+    c_k_peak = float(kinematic_speed(b, m, n, i0, np.array([h_peak_normal]))[0])
     st0, st1 = stations_out[0], stations_out[-1]
     travel = st1["peak_t"] - st0["peak_t"]
     ck_meas = ((x[stations[-1]] - x[stations[0]]) / travel) if travel > 1e-6 else 0.0
-    from .solver import kinematic_speed
     ck_h0 = float(kinematic_speed(b, m, n, i0, np.array([h_n0]))[0])
 
     return {
@@ -344,16 +403,20 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         "stations": stations_out,
         "diagnostics": {
             "dt": round(dt, 3), "steps": steps, "dx": round(dx, 2), "nx": Nx, "auto_coarsened": auto_coarsened,
-            "max_courant": None,
+            "max_courant": round(float(max_courant), 3),
             "mass_err": round(float(mass_err), 6),
             "newton_iters": iters_total,
             "newton_failed": failed,
+            "max_residual": float(max_residual),
+            "status": "ok" if failed == 0 else "partial",
+            "h_final": [round(float(v), 4) for v in h],
+            "t_final": round(float(t), 1),
             "theta": theta, "psi": psi,
             "c_k_h0": round(ck_h0, 4),
-            "c_k_peak": None,
+            "c_k_peak": round(c_k_peak, 4),
             "c_k_measured": round(float(ck_meas), 4),
             "boundary_peak_err": round(abs(st0["peak_Q"] - Qpeak) / max(Qpeak, 1e-9), 5),
-            "h_peak_normal": None,
+            "h_peak_normal": round(h_peak_normal, 5),
             "h_dn_used": round(float(h_dn), 4),
             "h_dn_is_normal": bool(abs(h_dn - h_n0) < 1e-9),
             "gate_on": bool(gate_on),
