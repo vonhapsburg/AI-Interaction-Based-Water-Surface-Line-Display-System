@@ -398,7 +398,8 @@ window.addEventListener("unhandledrejection", function(e){
           <button class="preset eng" data-p="two_gate">双闸联调</button>
           <button class="preset eng" data-p="two_gate_stagger">双闸错峰</button>
           <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
-          <button class="preset rand" id="randGateBtn" type="button">🎲 随机闸门</button>
+          <button class="preset rand" id="randGateBtn" type="button">🎲 随机单闸</button>
+          <button class="preset rand" id="randTwoBtn" type="button">🎲 随机双闸</button>
         </div>
         <div class="note" id="modelNote" style="margin:0 0 10px;">
           <b>教学模式</b>：扩散波（忽略惯性项），算得快，用来讲清“一族曲线 / 削峰 / 绳套”。
@@ -1149,8 +1150,9 @@ async function refreshChips(text){
         const b = document.createElement("button");
         b.className = "chip"; b.type = "button"; b.textContent = t;
         b.addEventListener("click", ()=>{
-          if(t.includes("随机闸门")){ randomCase(true); return; }
-          if(t.includes("随机算例")){ randomCase(false); return; }
+          if(t.includes("随机双闸")){ randomCase(2); return; }
+  if(t.includes("随机单闸") || t.includes("随机闸门")){ randomCase(1); return; }
+          if(t.includes("随机算例")){ randomCase(0); return; }
           $("#chatInput").value = t; sendChat();
         });
         box.appendChild(b);
@@ -1913,7 +1915,7 @@ async function sendChat(){
     }else if(r.act === "random"){
       wait.textContent = "正在生成随机" + (r.gate ? "闸门" : "") + "算例…";
       refreshChips(text);
-      await randomCase(!!r.gate);
+      await randomCase(r.gate ? 1 : 0);
     }else{
       renderReply(wait, r.reply || "（没有回答）");
       refreshChips(text);
@@ -2212,11 +2214,12 @@ function showBusy(label){
 function hideBusy(){ $("#busy").style.display = "none"; clearInterval(busyTimer); }
 
 /* ---------------- 随机算例 ---------------- */
-async function randomCase(useGate){
-  const btn = useGate ? $("#randGateBtn") : $("#randBtn");
+async function randomCase(mode){
+  mode = +mode || 0;
+  const btn = mode === 2 ? $("#randTwoBtn") : (mode === 1 ? $("#randGateBtn") : $("#randBtn"));
   if(btn) btn.disabled = true;
   try{
-    const r = await postJSON("/api/unsteady/random", { gate: !!useGate });
+    const r = await postJSON("/api/unsteady/random", { gates: mode });
     if(!r.ok){ setMsg("随机算例失败：" + (r.error || ""), "err"); return; }
     const p = r.params || r;
     if(!p || !p.mode){ setMsg("随机算例返回结构异常：" + JSON.stringify(r).slice(0, 120), "err"); return; }
@@ -2229,15 +2232,32 @@ async function randomCase(useGate){
     set("#Nx",p.Nx);
     set("#hdn", p.hdn);
     const gon = $("#gateOn"), gbox = $("#gateBox");
+    const g2on = $("#gate2On"), g2box = $("#gate2Box");
     if(p.gate){
+      const arr = p.gate.structures || [p.gate];
       if(gon) gon.checked = true;
       if(gbox) gbox.style.display = "";
-      const g = p.gate;
-      set("#gateS", g.s); set("#gateB", g.b_g); set("#gateZ", g.z_s); set("#gateMu", g.mu);
-      set("#gateA0", g.a0); set("#gateA1", g.a_end); set("#gateTc", g.t_close); set("#gateTr", g.t_ramp);
+      const g1 = arr[0];
+      const s1 = (g1.s_pct != null) ? g1.s_pct : (g1.s != null && p.L ? g1.s / p.L * 100 : 50);
+      set("#gateS", +(+s1).toFixed(1)); set("#gateB", g1.b_g); set("#gateZ", g1.z_s); set("#gateMu", g1.mu);
+      set("#gateA0", g1.a0); set("#gateA1", g1.a_end); set("#gateTc", g1.t_close); set("#gateTr", g1.t_ramp);
+      clearGateSched();
+      if(arr.length > 1){
+        if(g2on){ g2on.checked = true; }
+        if(g2box){ g2box.style.display = ""; }
+        const g2 = arr[1];
+        const s2 = (g2.s_pct != null) ? g2.s_pct : (g2.s != null && p.L ? g2.s / p.L * 100 : 75);
+        set("#gate2S", +(+s2).toFixed(1)); set("#gate2B", g2.b_g); set("#gate2Z", g2.z_s); set("#gate2Mu", g2.mu);
+        set("#gate2A0", g2.a0); set("#gate2A1", g2.a_end); set("#gate2Tc", g2.t_close); set("#gate2Tr", g2.t_ramp);
+      }else if(g2on){
+        g2on.checked = false;
+        if(g2box) g2box.style.display = "none";
+      }
     }else{
       if(gon) gon.checked = false;
       if(gbox) gbox.style.display = "none";
+      if(g2on){ g2on.checked = false; }
+      if(g2box){ g2box.style.display = "none"; }
     }
     refreshHnHint();
     runCase();
@@ -2545,8 +2565,9 @@ if($("#chatExpand")) $("#chatExpand").addEventListener("click", e=>{
 });
 if($("#chatBackdrop")) $("#chatBackdrop").addEventListener("click", ()=>setChatExpanded(false));
 document.addEventListener("keydown", e=>{ if(e.key === "Escape" && chatExpanded) setChatExpanded(false); });
-if($("#randBtn")) $("#randBtn").addEventListener("click", ()=>randomCase(false));
-if($("#randGateBtn")) $("#randGateBtn").addEventListener("click", ()=>randomCase(true));
+if($("#randBtn")) $("#randBtn").addEventListener("click", ()=>randomCase(0));
+if($("#randGateBtn")) $("#randGateBtn").addEventListener("click", ()=>randomCase(1));
+if($("#randTwoBtn")) $("#randTwoBtn").addEventListener("click", ()=>randomCase(2));
 bindFamilyZoom();
 if($("#gateSchedAdd")) $("#gateSchedAdd").addEventListener("click", ()=>{
   const box = $("#gateSchedRows");

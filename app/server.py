@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate31"
+BUILD_ID = "2026-11-28-gate32"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -921,7 +921,12 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 import random as _rd
                 from unsteady import solver as us
-                want_gate = bool(body.get("gate"))
+                try:
+                    want_gates = int(body.get("gates"))
+                except (TypeError, ValueError):
+                    want_gates = 1 if body.get("gate") else 0
+                want_gates = max(0, min(want_gates, 2))
+                want_gate = want_gates > 0
 
                 picked = None
                 for _ in range(40):
@@ -967,29 +972,47 @@ class Handler(SimpleHTTPRequestHandler):
                             continue
                     gate = None
                     if want_gate:
-                        # 按目标水头损失反算终止开度：Δh = (Q/(μ·b_g·a))²/(2g)
-                        b_g = round(b * _rd.uniform(0.8, 1.2), 1)
-                        dhp = _rd.uniform(1.5, 3.5)
-                        a_end = Qpeak / (0.62 * b_g * _m.sqrt(2.0 * 9.81 * dhp))
-                        a_end = round(min(max(a_end, 0.35), 1.6), 2)
-                        a0 = round(a_end * _rd.uniform(1.3, 1.7), 2)
-                        t_close = round(tp * _rd.uniform(0.4, 0.8), 2)
-                        t_ramp = round(max(0.3, min(1.5, tp * _rd.uniform(0.3, 0.8))), 2)
-                        gate = {"on": True, "s": 50, "b_g": b_g, "z_s": 0, "mu": 0.62,
-                                "a0": a0, "a_end": a_end,
-                                "t_close": t_close, "t_ramp": t_ramp}
-                        te = max(te, round(t_close + t_ramp + 2.0, 1))
+                        def _mk_gate(s_pct, b_g):
+                            dhp = _rd.uniform(1.2, 3.4)
+                            _a = Qpeak / (0.62 * b_g * _m.sqrt(2.0 * 9.81 * dhp))
+                            _a = round(min(max(_a, 0.30), 1.8), 2)
+                            _a0 = round(_a * _rd.uniform(1.25, 1.75), 2)
+                            _tc = round(tp * _rd.uniform(0.35, 0.9), 2)
+                            _tr = round(max(0.3, min(1.6, tp * _rd.uniform(0.25, 0.9))), 2)
+                            return {"s_pct": round(s_pct, 1), "b_g": b_g, "z_s": 0.0,
+                                    "mu": 0.62, "a0": _a0, "a_end": _a,
+                                    "t_close": _tc, "t_ramp": _tr}
+                        if want_gates == 1:
+                            # 单闸：闸位、闸宽、开度过程都随机
+                            _s = _rd.uniform(32.0, 68.0)
+                            _b = round(b * _rd.uniform(0.75, 1.25), 1)
+                            gate = dict(_mk_gate(_s, _b), on=True)
+                            te = max(te, round(gate["t_close"] + gate["t_ramp"] + 2.0, 1))
+                        else:
+                            # 双闸：两座闸位置、宽度、关闭时机都随机，且必须错开
+                            _s1 = _rd.uniform(18.0, 42.0)
+                            _s2 = _rd.uniform(58.0, 82.0)
+                            _b1 = round(b * _rd.uniform(0.75, 1.25), 1)
+                            _b2 = round(b * _rd.uniform(0.75, 1.25), 1)
+                            _g1 = _mk_gate(_s1, _b1)
+                            _g2 = _mk_gate(_s2, _b2)
+                            gate = {"structures": [_g1, _g2]}
+                            te = max(te, round(max(_g1["t_close"] + _g1["t_ramp"],
+                                                   _g2["t_close"] + _g2["t_ramp"]) + 2.0, 1))
                         try:
                             from unsteady import preissmann as up
                             rr = up.run(L=L, b=b, m=m, n=n, i0=i0, Q0=Q0, Qpeak=Qpeak,
                                         t_peak=tp * 3600.0, t_base=tb * 3600.0,
                                         t_end=min(te, 6.0) * 3600.0, h_dn=hd,
                                         h_init=np.full(41, hn), Nx=41, gate=gate)
-                            hu_max = max(rr["gate"]["hu"])
-                            pk_down = rr["stations"][-1]["peak_Q"]
+                            if rr["diagnostics"].get("gate_count", 0) != want_gates:
+                                continue
                             if rr["diagnostics"]["newton_failed"] > 0:
                                 continue
-                            if hu_max > max(5.0, 4.5 * hn):
+                            _st = rr.get("structures") or []
+                            hu_max = max((max(s["hu"]) for s in _st), default=0.0)
+                            pk_down = rr["stations"][-1]["peak_Q"]
+                            if hu_max > max(5.5, 4.5 * hn):
                                 continue
                             if pk_down > 0.95 * Qpeak:
                                 continue
