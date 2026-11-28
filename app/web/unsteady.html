@@ -295,7 +295,7 @@ window.addEventListener("unhandledrejection", function(e){
           <button id="schedReplay" type="button" class="miniBtn">回放</button>
           <button id="schedNew" type="button" class="miniBtn">新建会话</button>
         </div>
-        <div class="hint" id="schedMsg">首轮约 5–8 s；之后每轮只重算必要部分。</div>
+        <div class="hint" id="schedMsg">已接入 AI 判意图与写回复；模型不可用时自动退回规则。首轮约 5–10 s。</div>
       </div>
     </section>
 
@@ -1381,15 +1381,16 @@ async function schedSend(){
         t_peak: (+$("#tp").value)*3600, t_base: (+$("#tb").value)*3600,
         t_end: (+$("#te").value)*3600, Nx: 61,
         h_dn: $("#hdn").value.trim()==="auto" ? -1 : +$("#hdn").value,
-        gate: currentGate(), text: text, max_stage: ms === "" ? null : +ms
+        gate: currentGate(), text: text, max_stage: ms === "" ? null : +ms,
+        use_ai: true
       });
       if(r.ok){ schedSid = r.session_id; }
     }else{
       r = await postJSON("/api/unsteady/schedule/turn",
-                         {session_id: schedSid, text: text});
+                         {session_id: schedSid, text: text, use_ai: true});
     }
     if(!r.ok){ addSchedLine("sys", "失败：" + (r.error || "")); return; }
-    addSchedLine("sys", r.reply || "");
+    addSchedLine("sys", (r.ai_used === false ? "规则兜底：" : "AI 参谋：") + (r.reply || ""));
     if(r.need_clarify && r.options){
       r.options.forEach(v=>{
         const b = document.createElement("button");

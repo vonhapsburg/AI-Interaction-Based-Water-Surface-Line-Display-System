@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate24"
+BUILD_ID = "2026-11-28-gate25"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -1032,8 +1032,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if path.endswith("/history"):
                     return self._json(ss.history(body.get("session_id") or ""))
                 if path.endswith("/turn"):
-                    return self._json(ss.turn(body.get("session_id") or "",
-                                              body.get("text") or ""))
+                    return self._json(ss.turn(
+                        body.get("session_id") or "", body.get("text") or "",
+                        use_ai=(bool(body.get("use_ai")) if "use_ai" in body else None)))
                 base = {}
                 for k in ("L", "b", "m", "n", "i0", "Q0", "Qpeak",
                           "t_peak", "t_base", "t_end", "Nx", "h_dn"):
@@ -1046,7 +1047,8 @@ class Handler(SimpleHTTPRequestHandler):
                     ms = None if ms in (None, "") else float(ms)
                 except (TypeError, ValueError):
                     ms = None
-                return self._json(ss.create(base, body.get("text") or "", ms))
+                return self._json(ss.create(base, body.get("text") or "", ms,
+                                            use_ai=bool(body.get("use_ai"))))
             except Exception as e:
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)
