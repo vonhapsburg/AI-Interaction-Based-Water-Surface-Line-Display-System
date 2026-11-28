@@ -94,6 +94,8 @@ def parse_gate(text):
     if not t or not any(w in t for w in ("闸", "开度", "关到", "关至", "关小", "关大")):
         return None
     out = {}
+    if re.search(r"第二座|二闸|2号闸|闸\s*2", t):
+        out["which"] = 2
     m = re.search(r"闸位[^0-9]{0,8}(\d+(?:\.\d+)?)\s*(?:%|％)", t)
     if m:
         out["s_pct"] = float(m.group(1))
@@ -127,6 +129,12 @@ def parse_gate(text):
         out["a_end"] = segs[0][1]
         out["t_ramp"] = 0.0
 
+    # “第二座闸关到0.5米”这类没有时间前缀的直接开度
+    if "a_end" not in out and "sched" not in out:
+        m = re.search(r"(?:关到|关至|降到|减到)\s*(\d+(?:\.\d+)?)\s*(?:米|m)?", t)
+        if m:
+            out["a_end"] = float(m.group(1))
+
     m = re.search(r"(?:关闭|关闸|关门)历时[^0-9]{0,6}(\d+(?:\.\d+)?)\s*小时", t)
     if m:
         out["t_ramp"] = float(m.group(1))
@@ -139,6 +147,13 @@ def parse_gate(text):
         out["t_close"] = 0.0
         out["t_ramp"] = float(m.group(1))
         out["a_end"] = float(m.group(2))
+
+    # “再关小一点 / 关大一点”：相对调整，由页面按当前开度加减
+    if not any(k in out for k in ("s_pct", "b_g", "a0", "a_end", "sched", "t_close")):
+        if "关小" in t or "调小" in t:
+            out["delta"] = -0.1
+        elif "关大" in t or "调大" in t:
+            out["delta"] = 0.1
 
     return out or None
 
@@ -437,7 +452,8 @@ _CHIP_MAP = [
 
 _DEFAULT_CHIPS = ["为什么洪峰变矮了？", "绳套为什么是逆时针？", "回水为什么能往上游传？",
                   "c_k 和峰现时间怎么算？", "扩散波和全方程差在哪？",
-                  "请给我随机生成一份随机算例", "请给我随机生成一份随机闸门",
+                  "请给我随机生成一份随机算例", "请给我随机生成一份随机单闸",
+                  "请给我随机生成一份随机双闸",
                   "工程模式能算什么？", "出题模式怎么用？",
                   "精度优先什么时候该勾？", "特征线怎么判断能不能上溯？"]
 _chip_ptr = 0
@@ -449,6 +465,13 @@ def chips(text, params=None, summary="", limit=3):
     limit = max(3, min(int(limit or 3), 14))
     global _chip_ptr
     out = []
+    _g = (params or {}).get("gate") or {}
+    _arr = _g.get("structures") or ([_g] if (_g.get("on") or _g.get("s_pct") is not None) else [])
+    if _arr:
+        if len(_arr) >= 2:
+            out.extend(["第二座闸再关小一点", "两座闸怎么错峰？", "随机双闸试一下"])
+        else:
+            out.extend(["再关小一点会怎样？", "闸上水位能降多少？", "随机单闸试一下"])
     for keys, pool in _CHIP_MAP:
         if any(k in t for k in keys):
             out.extend(list(pool))

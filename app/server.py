@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate32"
+BUILD_ID = "2026-11-28-gate33"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -1260,6 +1260,11 @@ class Handler(SimpleHTTPRequestHandler):
                 _g = uchat.parse_gate(text)
                 if _g:
                     _bits = []
+                    if _g.get("which") == 2:
+                        _bits.append("第二座闸")
+                    if _g.get("delta") is not None:
+                        _bits.append("开度%s %.2f m" % (
+                            "调小" if _g["delta"] < 0 else "调大", abs(_g["delta"])))
                     if "s_pct" in _g:
                         _bits.append("闸位 %.0f%%" % _g["s_pct"])
                     if "b_g" in _g:
@@ -1284,11 +1289,13 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"act": "gate_set", "gate": _g,
                                        "reply": "已识别闸门参数：" + "，".join(_bits)})
 
-                # 随机算例/随机闸门：不经过模型，直接交给前端生成
-                if re.search(r"随机闸门", text):
-                    return self._json({"act": "random", "gate": True})
+                # 随机算例/随机单闸/随机双闸：不经过模型，直接交给前端生成
+                if re.search(r"随机双闸|双闸随机", text):
+                    return self._json({"act": "random", "gates": 2})
+                if re.search(r"随机单闸|随机闸门|单闸随机", text):
+                    return self._json({"act": "random", "gates": 1})
                 if re.search(r"随机算例", text):
-                    return self._json({"act": "random", "gate": False})
+                    return self._json({"act": "random", "gates": 0})
                 # “换一批/再来几道”直接判为出题，避免模型分类不稳定
                 if re.search(r"换一批|再来几|再出几|不满意|太简单|太难|换几道", text):
                     ex = {"act": "quiz", "more": True}

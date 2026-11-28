@@ -1230,6 +1230,30 @@ function currentGate(){
   return g;
 }
 function applyGatePatch(g){
+  if(g.which === 2){
+    const on2 = $("#gate2On"), box2 = $("#gate2Box");
+    if(on2) on2.checked = true;
+    if(box2) box2.style.display = "";
+    const set2 = (id,v)=>{ const el = $(id); if(el && v != null) el.value = v; };
+    if(g.s_pct != null) set2("#gate2S", g.s_pct);
+    if(g.b_g != null) set2("#gate2B", g.b_g);
+    if(g.a0 != null) set2("#gate2A0", g.a0);
+    if(g.a_end != null) set2("#gate2A1", g.a_end);
+    if(g.delta != null){
+      const el = $("#gate2A1");
+      const cur = el ? +el.value : 0.6;
+      el.value = Math.min(3.0, Math.max(0.02, +(cur + g.delta).toFixed(2)));
+    }
+    if(g.t_close != null) set2("#gate2Tc", g.t_close);
+    if(g.t_ramp != null) set2("#gate2Tr", g.t_ramp);
+    if(mode !== "engineering"){
+      mode = "engineering";
+      document.querySelectorAll("#modeSeg button").forEach(b=>b.classList.toggle("on", b.dataset.mode==="engineering"));
+      if(typeof updateModeVisuals === "function") updateModeVisuals();
+    }
+    runCase();
+    return;
+  }
   const gon = $("#gateOn"), gbox = $("#gateBox");
   if(gon) gon.checked = true;
   if(gbox) gbox.style.display = "";
@@ -1238,6 +1262,12 @@ function applyGatePatch(g){
   if(g.b_g != null) set("#gateB", g.b_g);
   if(g.a0 != null) set("#gateA0", g.a0);
   if(g.a_end != null) set("#gateA1", g.a_end);
+  if(g.delta != null){
+    const el = $("#gateA1");
+    const cur = el ? +el.value : 0.6;
+    el.value = Math.min(3.0, Math.max(0.02, +(cur + g.delta).toFixed(2)));
+    if(!g.sched) clearGateSched();
+  }
   if(g.t_close != null) set("#gateTc", g.t_close);
   if(g.t_ramp != null) set("#gateTr", g.t_ramp);
   if(g.sched){
@@ -1913,9 +1943,10 @@ async function sendChat(){
       applyGatePatch(r.gate || {});
       refreshChips(text);
     }else if(r.act === "random"){
-      wait.textContent = "正在生成随机" + (r.gate ? "闸门" : "") + "算例…";
+      const _m = (r.gates != null) ? +r.gates : (r.gate ? 1 : 0);
+      wait.textContent = "正在生成随机" + (_m === 2 ? "双闸" : (_m === 1 ? "单闸" : "")) + "算例…";
       refreshChips(text);
-      await randomCase(r.gate ? 1 : 0);
+      await randomCase(_m);
     }else{
       renderReply(wait, r.reply || "（没有回答）");
       refreshChips(text);
