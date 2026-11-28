@@ -104,6 +104,10 @@
   .schedLine{font-size:12.5px;line-height:1.6;padding:6px 9px;border-radius:8px;max-width:92%;}
   .schedLine.me{align-self:flex-end;background:#eef3f8;}
   .schedLine.sys{align-self:flex-start;background:#f4fbf7;border:1px solid #cfe4d8;}
+  .inlineSpin{display:inline-block;width:10px;height:10px;border:2px solid #cfe0ef;
+              border-top-color:#2e6da4;border-radius:50%;animation:sp .8s linear infinite;
+              margin-right:6px;vertical-align:-1px;}
+  .schedLine.thinking{color:#2f7d54;background:#f4fbf7;}
   .traceChip{display:inline-block;background:#eef3f8;color:#2f4b66;border-radius:5px;
              padding:1px 6px;margin:2px 4px 2px 0;font-size:11px;}
   .okTag{color:#2f7d54;font-weight:600;} .badTag{color:#b23c4a;font-weight:600;}
@@ -1245,6 +1249,7 @@ async function runCompare(){
     s_pct: g.s_pct, b_g: g.b_g, a0: g.a0, t_close: g.t_close, t_ramp: g.t_ramp}));
   const btn = $("#cmpBtn");
   if(btn){ btn.disabled = true; btn.textContent = "计算中…"; }
+  const stopCmp = statusTicker($("#cmpMsg"), "正在计算 " + plans.length + " 个方案");
   try{
     const r = await postJSON("/api/unsteady/compare", {
       L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
@@ -1259,6 +1264,7 @@ async function runCompare(){
   }catch(e){
     $("#cmpMsg").textContent = "对比请求失败：" + e.message;
   }finally{
+    stopCmp();
     if(btn){ btn.disabled = false; btn.textContent = "开始对比"; }
   }
 }
@@ -1268,7 +1274,7 @@ let lastAI = null;
 async function runAI(){
   const btn = $("#aiBtn");
   if(btn){ btn.disabled = true; btn.textContent = "参谋计算中…"; }
-  $("#aiOut").innerHTML = '<div class="hint">粗扫候选 → AI 精修 → 求解器裁决…（约 8–15 s）</div>';
+  const stopAI = statusTicker($("#aiOut"), "AI 参谋正在读结果并组织解释");
   try{
     const ms = $("#sharedMax").value.trim();
     const r = await postJSON("/api/unsteady/ai_schedule", {
@@ -1286,6 +1292,7 @@ async function runAI(){
   }catch(e){
     $("#aiOut").textContent = "请求失败：" + e.message;
   }finally{
+    stopAI();
     if(btn){ btn.disabled = false; btn.textContent = "让 AI 给方案"; }
   }
 }
@@ -1353,6 +1360,26 @@ document.querySelectorAll(".modeTab").forEach(b=>{
 });
 
 let schedSid = null;
+function statusTicker(el, label){
+  if(!el) return ()=>{};
+  const t0 = Date.now();
+  const tick = ()=>{
+    el.innerHTML = '<span class="inlineSpin"></span>' + label +
+      '（' + ((Date.now() - t0) / 1000).toFixed(1) + ' s）';
+  };
+  tick();
+  const id = setInterval(tick, 300);
+  return ()=>{ clearInterval(id); };
+}
+function schedThinking(text){
+  const box = $("#schedLog");
+  if(!box) return null;
+  const d = document.createElement("div");
+  d.className = "schedLine sys thinking";
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
 function addSchedLine(who, text){
   const box = $("#schedLog");
   if(!box) return;
@@ -1371,6 +1398,8 @@ async function schedSend(){
   inp.value = "";
   addSchedLine("me", text);
   const btn = $("#schedSend"); if(btn) btn.disabled = true;
+  const think = schedThinking();
+  const stopThinking = statusTicker(think, schedSid ? "AI 参谋正在思考" : "正在生成初始方案");
   try{
     let r;
     if(!schedSid){
@@ -1403,6 +1432,8 @@ async function schedSend(){
   }catch(e){
     addSchedLine("sys", "请求失败：" + e.message);
   }finally{
+    stopThinking();
+    if(think && think.parentNode) think.parentNode.removeChild(think);
     if(btn) btn.disabled = false;
   }
 }
@@ -1435,7 +1466,7 @@ if($("#schedNew")) $("#schedNew").addEventListener("click", ()=>{
 async function runOpt(){
   const btn = $("#optBtn");
   if(btn){ btn.disabled = true; btn.textContent = "寻优中…"; }
-  $("#optOut").innerHTML = '<div class="hint">枚举候选 → 求解 → 筛选 Pareto…（约 5–10 s）</div>';
+  const stopOpt = statusTicker($("#optOut"), "正在枚举候选并求解");
   try{
     const r = await postJSON("/api/unsteady/optimize", {
       L: +$("#L").value, b: +$("#b").value, m: +$("#m").value, n: +$("#n").value,
@@ -1451,6 +1482,7 @@ async function runOpt(){
   }catch(e){
     $("#optOut").textContent = "请求失败：" + e.message;
   }finally{
+    stopOpt();
     if(btn){ btn.disabled = false; btn.textContent = "开始寻优"; }
   }
 }

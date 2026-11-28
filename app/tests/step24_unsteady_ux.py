@@ -93,6 +93,8 @@ def main():
         check("调度页有 Pareto 与建议书", "drawPareto" in html and "report_md" in html)
         check("调度页有反事实", 'id="cfBtn"' in html and "counterfactual" in html)
         check("调度模式面板映射正确", 'opt: "panelOpt"' in html and 'cmp: "panelCmp"' in html)
+        check("调度有加载反馈", "statusTicker" in html and "schedThinking" in html
+              and "inlineSpin" in html)
         check("调度页有多轮会话", 'id="schedSend"' in html and 'id="schedLog"' in html)
         check("调度页会话可回放", 'id="schedReplay"' in html and "schedule/history" in html)
         check("调度页双栏布局", "schedGrid" in html and "actRow" in html)
