@@ -37,6 +37,54 @@ def _radius(b, m, h):
     return A / np.maximum(P, 1e-9)
 
 
+def _sigma_weir(r):
+    """宽顶堰淹没系数（按教材表，0.80–1.00 线性插值）。"""
+    xs = [0.80, 0.84, 0.88, 0.92, 0.96, 1.00]
+    ys = [1.00, 0.97, 0.92, 0.85, 0.75, 0.62]
+    if r <= xs[0]:
+        return 1.0
+    if r >= xs[-1]:
+        return ys[-1]
+    for i in range(len(xs) - 1):
+        if r <= xs[i + 1]:
+            w = (r - xs[i]) / (xs[i + 1] - xs[i])
+            return ys[i] + w * (ys[i + 1] - ys[i])
+    return ys[-1]
+
+
+def _steady_weir_h(Q, b, m, n, i0, L, Nx, seg, z_s, b_w, C, h_dn, h_n0):
+    """给宽顶堰算一个近似稳态回水剖面，作为非恒定初场。"""
+    import math as _m
+    g = 9.81
+    H0 = (Q / max(C * b_w, 1e-9)) ** (2.0 / 3.0)
+    hw = z_s + H0
+    dx = L / max(Nx - 1, 1)
+    h = np.full(Nx, max(h_dn, 0.05))
+
+    def f(hh):
+        A = hh * (b + m * hh)
+        B = b + 2.0 * m * hh
+        P = b + 2.0 * hh * _m.sqrt(1.0 + m * m)
+        R = A / max(P, 1e-9)
+        Sf = n * n * Q * abs(Q) / (max(A, 1e-9) ** 2 * max(R, 1e-9) ** (4.0 / 3.0))
+        Fr2 = Q * Q * B / (g * max(A, 1e-9) ** 3)
+        den = max(1.0 - Fr2, 0.05)
+        return (i0 - Sf) / den
+
+    h[seg] = max(hw, 0.05)
+    for i in range(seg - 1, -1, -1):
+        hi = h[i + 1]
+        k1 = f(hi)
+        k2 = f(max(hi - 0.5 * dx * k1, 0.02))
+        k3 = f(max(hi - 0.5 * dx * k2, 0.02))
+        k4 = f(max(hi - dx * k3, 0.02))
+        h[i] = max(hi - dx * (k1 + 2 * k2 + 2 * k3 + k4) / 6.0, 0.02)
+    for i in range(seg + 1, Nx):
+        w = (i - seg) / max(Nx - 1 - seg, 1)
+        h[i] = max(hw + (h_dn - hw) * w, 0.02)
+    return h
+
+
 def _sf(n, Q, A, R):
     return n * n * Q * np.abs(Q) / (np.maximum(A, 1e-9) ** 2 * np.maximum(R, 1e-9) ** (4.0 / 3.0))
 
@@ -142,8 +190,23 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         if _s is None:
             _s = float(g.get("s_pct", 50.0)) / 100.0 * L
         s_g = float(_s)
-        b_g = float(g.get("b_g", b))
         z_s = float(g.get("z_s", 0.0))
+        typ = str(g.get("type", "gate")).lower()
+        seg = int(round(s_g / L * (Nx - 1)))
+        seg = max(1, min(Nx - 2, seg))
+        hist = {"t": [], "a": [], "Q": [], "hu": [], "hd": []}
+        if typ == "weir":
+            b_w = float(g.get("b_w", g.get("b_g", b)))
+            C_w = float(g.get("C", 0.35))
+            if b_w <= 0 or C_w <= 0:
+                raise ValueError("宽顶堰参数不合法：堰宽与流量系数必须为正")
+            return {"type": "weir", "seg": seg, "x": float(x[seg]), "s": s_g,
+                    "b_w": b_w, "b_g": b_w, "C": C_w, "z_s": z_s,
+                    "mu": None, "a0": 0.0, "a_end": 0.0,
+                    "t_close": 0.0, "t_ramp": 0.0, "sched": [],
+                    "a_now": 0.0, "hist": hist,
+                    "_reg": "free", "_sig": 1.0}
+        b_g = float(g.get("b_g", b))
         mu_g = float(g.get("mu", 0.62))
         a0 = float(g.get("a0", 1.0))
         a_end = float(g.get("a_end", a0))
@@ -157,16 +220,19 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             sched.sort()
         except Exception:
             sched = []
-        seg = int(round(s_g / L * (Nx - 1)))
-        seg = max(1, min(Nx - 2, seg))
-        return {"seg": seg, "x": float(x[seg]), "s": s_g,
+        return {"type": "gate", "seg": seg, "x": float(x[seg]), "s": s_g,
                 "b_g": b_g, "z_s": z_s, "mu": mu_g,
                 "a0": a0, "a_end": a_end, "t_close": t_close,
                 "t_ramp": t_ramp, "sched": sched, "a_now": a0,
-                "hist": {"t": [], "a": [], "Q": [], "hu": [], "hd": []}}
+                "hist": hist}
 
     structs = [_mk_struct(g) for g in gate_list]
+    _segs = [st["seg"] for st in structs]
+    if len(_segs) != len(set(_segs)):
+        raise ValueError("两座结构物落在同一网格段，请把位置错开")
     for _st in structs:
+        if _st["type"] != "gate":
+            continue
         _amins = [_st["a0"], _st["a_end"]] + [float(p[1]) for p in _st["sched"]]
         if min(_amins) < 0.02:
             raise ValueError("闸门开度低于 0.02 m：本模块不支持全关断流，请把最小开度设在 0.02 m 以上")
@@ -193,6 +259,16 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
 
     for _st in structs:
         _st["a_now"] = float(struct_a(_st, 0.0))
+
+    # 宽顶堰：用稳态回水剖面做初场，避免高水头 t=0 突加
+    for _st in structs:
+        if _st.get("type") != "weir":
+            continue
+        _h0 = _steady_weir_h(Q0, b, m, n, i0, L, Nx, _st["seg"],
+                             _st["z_s"], _st["b_w"], _st["C"], h_dn, h_n0)
+        h[:] = _h0
+        Q[:] = Q0
+        h_start = h.copy()
 
     snap_t = [hr * 3600.0 for hr in snap_hours if hr * 3600.0 <= t_end]
     h_snap, t_snap = [], []
@@ -225,6 +301,10 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             _h["Q"].append(0.5 * (float(Q[_st["seg"]]) + float(Q[_st["seg"] + 1])))
             _h["hu"].append(float(h[_st["seg"]]))
             _h["hd"].append(float(h[_st["seg"] + 1]))
+            if _st.get("type") == "weir":
+                _st["_H0_last"] = max(float(h[_st["seg"]]) - _st["z_s"], 0.0)
+                _st["_sig_last"] = float(_st.get("_sig", 1.0))
+                _st["_reg_last"] = _st.get("_reg", "free")
 
     record(0.0)
     inflow = outflow = 0.0
@@ -240,6 +320,21 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
         for _st in structs:
             _st["a_now"] = float(struct_a(_st, t_new))
         h_down = h_dn
+        # 冻结堰流态（每步只判一次，Newton 内不切换）
+        for _st in structs:
+            if _st.get("type") != "weir":
+                continue
+            _h1 = max(float(h[_st["seg"]]) - _st["z_s"], 0.0)
+            _h2 = max(float(h_dn) - _st["z_s"],
+                      float(h[_st["seg"] + 1]) - _st["z_s"], 0.0)
+            if _h1 <= 1e-6:
+                _st["_reg"], _st["_sig"] = "dry", 0.0
+            else:
+                _r = _h2 / _h1
+                if _r < 0.80:
+                    _st["_reg"], _st["_sig"] = "free", 1.0
+                else:
+                    _st["_reg"], _st["_sig"] = "submerged", _sigma_weir(_r)
         h_old, Q_old = h.copy(), Q.copy()
         hLo, hRo = h_old[:-1], h_old[1:]
         qLo, qRo = Q_old[:-1], Q_old[1:]
@@ -269,16 +364,22 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
                 + G * Abar * (theta * dh_new + (1 - theta) * dh_old) \
                 + G * Abar * (Sf - i0)
             if gate_on:
-                # 每座闸门在自己的网格段加局部水头损失 Δh = Q|Q| / (2g(μ·b·a)²)
                 M = M.copy()
                 for _st in structs:
-                    a_eff = max(_st["a_now"], 1e-3)
                     _seg = _st["seg"]
+                    if _st["type"] == "weir":
+                        qbar = 0.5 * (qL[_seg] + qR[_seg])
+                        if _st.get("_reg") == "dry":
+                            M[_seg] = qbar
+                            continue
+                        h1 = max(float(hL[_seg]) - _st["z_s"], 0.0)
+                        Qw = _st["C"] * _st["b_w"] * h1 ** 1.5 * _st.get("_sig", 1.0)
+                        M[_seg] = qbar - Qw
+                        continue
+                    a_eff = max(_st["a_now"], 1e-3)
                     qq = qL[_seg] * abs(qL[_seg])
                     head = qq / (2.0 * (_st["mu"] * _st["b_g"] * a_eff) ** 2)
                     if _st["z_s"] > 0:
-                        # 底坎以上可用水头：不足时用惩罚项把过流压向
-                        # Q = μ b a √(2g(h_u - z_s))，避免“设了底坎却不算”的假结果
                         avail = max(float(hL[_seg]) - _st["z_s"], 1e-6)
                         over = max(head - avail, 0.0)
                         head = head + 20.0 * over
@@ -423,12 +524,14 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "h_dn_used": round(float(h_dn), 4),
             "h_dn_is_normal": bool(abs(h_dn - h_n0) < 1e-9),
             "gate_on": bool(gate_on),
-            "gate_count": len(structs),
+            "gate_count": sum(1 for st in structs if st.get("type") == "gate"),
+            "weir_count": sum(1 for st in structs if st.get("type") == "weir"),
             "gate_x": (round(structs[0]["x"], 2) if gate_on else None),
             "gate_Q_final": round(qg_final, 4),
         },
         "gate": ({
-            "on": True, "x": round(structs[0]["x"], 2),
+            "on": True, "type": structs[0].get("type", "gate"),
+            "x": round(structs[0]["x"], 2),
             "b_g": structs[0]["b_g"], "z_s": structs[0]["z_s"],
             "mu": structs[0]["mu"],
             "t": [round(v, 1) for v in structs[0]["hist"]["t"][::keep]],
@@ -438,8 +541,12 @@ def run(L=10000.0, b=5.0, m=0.0, n=0.015, i0=0.001,
             "hd": [round(v, 4) for v in structs[0]["hist"]["hd"][::keep]],
         } if gate_on else {"on": False}),
         "structures": [{
-            "x": round(st["x"], 2), "b_g": st["b_g"], "z_s": st["z_s"],
-            "mu": st["mu"],
+            "type": st.get("type", "gate"),
+            "x": round(st["x"], 2), "b_g": st["b_g"], "b_w": st.get("b_w"),
+            "C": st.get("C"), "z_s": st["z_s"], "mu": st["mu"],
+            "regime": st.get("_reg_last", st.get("_reg")),
+            "sigma": round(float(st.get("_sig_last", st.get("_sig", 1.0))), 3),
+            "H0": round(float(st.get("_H0_last", 0.0)), 3),
             "t": [round(v, 1) for v in st["hist"]["t"][::keep]],
             "a": [round(v, 4) for v in st["hist"]["a"][::keep]],
             "Q": [round(v, 4) for v in st["hist"]["Q"][::keep]],
