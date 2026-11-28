@@ -41,7 +41,10 @@ def _gate_for(base, a_end):
     g = dict(base.get("gate") or {})
     L = _num(base.get("L"), 2000.0)
     b = _num(base.get("b"), 6.0)
-    return {"s": _num(g.get("s"), 0.5 * L), "b_g": _num(g.get("b_g"), b),
+    _s = g.get("s")
+    if _s is None:
+        _s = float(g.get("s_pct", 50.0)) / 100.0 * L
+    return {"s": _num(_s, 0.5 * L), "b_g": _num(g.get("b_g"), b),
             "z_s": _num(g.get("z_s"), 0.0), "mu": _num(g.get("mu"), 0.62),
             "a0": _num(g.get("a0"), 1.0), "a_end": float(a_end),
             "t_close": _num(g.get("t_close"), 0.8 * 3600.0),
@@ -271,7 +274,7 @@ def run(base, text="", max_stage=None, use_ai=True):
         fallback = True
 
     return {
-        "ok": True, "need_clarify": False,
+        "ok": True, "need_clarify": False, "base": base,
         "intent": intent, "max_stage": max_stage,
         "reference_peak": round(ref_peak, 3),
         "candidates": rows,

@@ -8,7 +8,7 @@ BASE = "http://127.0.0.1:8000"
 OK = TOTAL = 0
 LINES = []
 VALID = {"capability", "random", "objective", "adjust", "explain",
-         "counterfactual", "reoptimize", "clarify"}
+         "counterfactual", "reoptimize", "clarify", "current"}
 
 
 def check(label, cond, detail=""):

@@ -58,28 +58,28 @@ def _new_result(base, max_stage, steps=5):
     return r
 
 
-def create(base, text="", max_stage=None, use_ai=False):
+def create(base, text="", max_stage=None, use_ai=False, current_plan=None):
     intent = chat.parse_schedule_intent(text or "") or {}
     if max_stage is None:
         max_stage = (intent.get("constraints") or {}).get("max_stage")
     sid = uuid.uuid4().hex[:10]
     sess = {"id": sid, "base": base, "max_stage": max_stage,
             "result": None, "history": [], "created": time.time(),
-            "use_ai": bool(use_ai)}
+            "use_ai": bool(use_ai), "current_plan": current_plan or None}
     SESSIONS[sid] = sess
     if max_stage is None:
         sess["history"].append({"text": text or "(创建)", "action": "clarify",
                                 "summary": "等待闸上允许水位"})
         return {"ok": True, "session_id": sid, "need_clarify": True,
                 "reply": "闸上最高水位允许到多少？", "options": [5.0, 5.5, 6.0],
-                "history": sess["history"], "ai_used": False}
+                "history": sess["history"], "ai_used": False, "base": base}
     sess["result"] = _new_result(base, max_stage, steps=5)
     reply = "已给出初始方案。" + _summary(sess["result"])
     sess["history"].append({"text": text or "(创建)", "action": "optimize",
                             "summary": reply})
     return {"ok": True, "session_id": sid, "need_clarify": False,
             "reply": reply, "result": sess["result"], "history": sess["history"],
-            "ai_used": False}
+            "ai_used": False, "base": base}
 
 
 def _rule_turn(sid, text):
@@ -108,7 +108,20 @@ def _rule_turn(sid, text):
         return {"ok": True, "action": "optimize", "reply": reply,
                 "result": sess["result"], "history": sess["history"]}
 
-    # 2) 能力介绍
+    # 2) 读取当前方案
+    if any(k in text for k in ("当前方案", "现在方案", "方案卡", "推荐方案是什么")):
+        cp = sess.get("current_plan") or ((sess.get("result") or {}).get("recommend") or {})
+        if cp:
+            reply = ("当前方案：%s，开度 %.2f m，峰值 %.2f m³/s，削峰 %.1f%%，闸上最高 %.2f m。"
+                     % (cp.get("name", "推荐"), cp.get("a_end", 0), cp.get("peak", 0),
+                        (cp.get("cut", 0) or 0) * 100, cp.get("hmax", 0)))
+        else:
+            reply = "当前方案卡还是空的，先生成一个方案，或直接说“闸上不能超过6米，尽量削峰”。"
+        sess["history"].append({"text": text, "action": "current", "summary": reply[:120]})
+        return {"ok": True, "action": "current", "reply": reply,
+                "history": sess["history"]}
+
+    # 3) 能力介绍
     if any(k in text for k in ("你能做什么", "你会什么", "有什么功能", "讲一讲",
                                "介绍一下", "怎么用", "帮助")):
         reply = _capability_reply(sess)
@@ -231,15 +244,18 @@ def _llm_decide(sess, text):
         return None
     rec = (sess.get("result") or {}).get("recommend") or {}
     base = sess.get("base") or {}
-    ctx = ("会话状态：闸上允许最高 %.2f m；当前推荐 %s（开度 %.2f m、峰值 %.2f、"
+    cp = sess.get("current_plan") or {}
+    ctx = ("当前方案卡：%s（开度 %.2f m、峰值 %.2f、闸上 %.2f m）；\n"
+           "会话状态：闸上允许最高 %.2f m；当前推荐 %s（开度 %.2f m、峰值 %.2f、"
            "削峰 %.1f%%、闸上 %.2f m）；渠道 L=%.0f m、b=%.1f m、Q0=%.1f、Qpeak=%.1f。\n"
            "用户这句话：%s" % (
+               cp.get("name", "无"), cp.get("a_end", 0), cp.get("peak", 0), cp.get("hmax", 0),
                sess.get("max_stage") or 0, rec.get("name", "无"),
                rec.get("a_end", 0), rec.get("peak", 0), rec.get("cut", 0) * 100,
                rec.get("hmax", 0), base.get("L", 0), base.get("b", 0),
                base.get("Q0", 0), base.get("Qpeak", 0), text))
     sys = ("你是闸门调度会话助手。只输出一个 JSON 对象，不要解释。字段：\n"
-           "action：capability|random|objective|adjust|explain|counterfactual|reoptimize|clarify；\n"
+           "action：capability|random|objective|adjust|explain|counterfactual|reoptimize|clarify|current；\n"
            "max_stage：当 action=reoptimize 时给出数字（1–20）；\n"
            "a_end：当 action=counterfactual 时给出开度（0.2–2.0）；\n"
            "direction：当 action=adjust 时填 conservative 或 aggressive；\n"
@@ -288,12 +304,15 @@ def _reply_safe(reply, sess, result):
 def _ai_turn(sess, text, data):
     action = str(data.get("action") or "").strip()
     if action not in ("capability", "random", "objective", "adjust",
-                      "explain", "counterfactual", "reoptimize", "clarify"):
+                      "explain", "counterfactual", "reoptimize", "clarify",
+                      "current"):
         return None
     sid = sess["id"]
     synth = None
     if action == "capability":
         synth = "讲一讲你能做什么"
+    elif action == "current":
+        synth = "当前方案是什么"
     elif action == "random":
         synth = "随机算例"
     elif action == "objective":
@@ -353,10 +372,12 @@ def _ai_turn(sess, text, data):
     return res
 
 
-def turn(sid, text, use_ai=None):
+def turn(sid, text, use_ai=None, current_plan=None):
     sess = SESSIONS.get(sid)
     if not sess:
         return {"ok": False, "error": "会话不存在或已过期"}
+    if current_plan is not None:
+        sess["current_plan"] = current_plan
     if use_ai is not None:
         sess["use_ai"] = bool(use_ai)
     if sess.get("use_ai"):
@@ -364,9 +385,11 @@ def turn(sid, text, use_ai=None):
         if data:
             res = _ai_turn(sess, text, data)
             if res:
+                res.setdefault("base", sess["base"])
                 return res
     res = _rule_turn(sid, text)
     res["ai_used"] = False
+    res.setdefault("base", sess["base"])
     return res
 
 

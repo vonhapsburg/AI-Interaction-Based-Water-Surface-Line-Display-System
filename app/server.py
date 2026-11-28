@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate27"
+BUILD_ID = "2026-11-28-gate29"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -1034,7 +1034,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if path.endswith("/turn"):
                     return self._json(ss.turn(
                         body.get("session_id") or "", body.get("text") or "",
-                        use_ai=(bool(body.get("use_ai")) if "use_ai" in body else None)))
+                        use_ai=(bool(body.get("use_ai")) if "use_ai" in body else None),
+                        current_plan=body.get("current_plan")))
                 base = {}
                 for k in ("L", "b", "m", "n", "i0", "Q0", "Qpeak",
                           "t_peak", "t_base", "t_end", "Nx", "h_dn"):
@@ -1048,7 +1049,8 @@ class Handler(SimpleHTTPRequestHandler):
                 except (TypeError, ValueError):
                     ms = None
                 return self._json(ss.create(base, body.get("text") or "", ms,
-                                            use_ai=bool(body.get("use_ai"))))
+                                            use_ai=bool(body.get("use_ai")),
+                                            current_plan=body.get("current_plan")))
             except Exception as e:
                 return self._json({"ok": False,
                                    "error": "%s: %s" % (type(e).__name__, e)}, 500)

@@ -1298,9 +1298,12 @@ async function runAI(){
 }
 if($("#aiBtn")) $("#aiBtn").addEventListener("click", runAI);
 
-let lastPlan = null, lastReport = "";
+let lastPlan = null, lastReport = "", lastPlanBase = null, lastPlanStage = null, lastPlanSource = "";
 function setPlanSummary(rec, extra){
   lastPlan = rec || null;
+  if(extra && extra.base) lastPlanBase = extra.base;
+  if(extra && extra.max_stage != null) lastPlanStage = +extra.max_stage;
+  if(extra && extra.source) lastPlanSource = extra.source;
   if(rec && extra && extra.report) lastReport = extra.report;
   const empty = $("#planEmpty"), info = $("#planInfo");
   if(!empty || !info) return;
@@ -1330,10 +1333,23 @@ function setPlanSummary(rec, extra){
     '</div>';
   const ap = $("#planApply");
   if(ap) ap.onclick = ()=>{
+    const b = lastPlanBase || {};
+    const setV = (id, v)=>{ const el = $(id); if(el && v != null && isFinite(v)) el.value = v; };
+    setV("#L", b.L); setV("#b", b.b); setV("#m", b.m); setV("#n", b.n);
+    setV("#i0", b.i0); setV("#Q0", b.Q0); setV("#Qpeak", b.Qpeak);
+    if(b.t_peak != null) setV("#tp", +(b.t_peak / 3600).toFixed(3));
+    if(b.t_base != null) setV("#tb", +(b.t_base / 3600).toFixed(3));
+    if(b.t_end != null) setV("#te", +(b.t_end / 3600).toFixed(3));
     const gon = $("#gateOn");
     if(gon && !gon.checked) gon.checked = true;
     const gbox = $("#gateBox"); if(gbox) gbox.style.display = "";
+    const g = b.gate || {};
+    if(g.s_pct != null) setV("#gateS", g.s_pct);
+    else if(g.s != null && b.L) setV("#gateS", +(g.s / b.L * 100).toFixed(1));
+    if(g.b_g != null) setV("#gateB", g.b_g);
+    if(g.a0 != null) setV("#gateA0", g.a0);
     $("#gateA1").value = (+rec.a_end).toFixed(2);
+    clearGateSched();
     switchView("evolve");
     runCase();
   };
@@ -1411,15 +1427,28 @@ async function schedSend(){
         t_end: (+$("#te").value)*3600, Nx: 61,
         h_dn: $("#hdn").value.trim()==="auto" ? -1 : +$("#hdn").value,
         gate: currentGate(), text: text, max_stage: ms === "" ? null : +ms,
-        use_ai: true
+        use_ai: true, current_plan: lastPlan
       });
       if(r.ok){ schedSid = r.session_id; }
     }else{
       r = await postJSON("/api/unsteady/schedule/turn",
-                         {session_id: schedSid, text: text, use_ai: true});
+                         {session_id: schedSid, text: text, use_ai: true,
+                          current_plan: lastPlan});
     }
     if(!r.ok){ addSchedLine("sys", "失败：" + (r.error || "")); return; }
     addSchedLine("sys", (r.ai_used === false ? "规则兜底：" : "AI 参谋：") + (r.reply || ""));
+    if(r.base) lastPlanBase = r.base;
+    if(r.result && r.result.max_stage != null){
+      lastPlanStage = +r.result.max_stage;
+      const sm = $("#sharedMax"); if(sm) sm.value = lastPlanStage;
+    }
+    if(r.result && r.result.recommend){
+      setPlanSummary(r.result.recommend, {
+        max_stage: r.result.max_stage,
+        source: "多轮会话",
+        base: r.base || lastPlanBase
+      });
+    }
     if(r.need_clarify && r.options){
       r.options.forEach(v=>{
         const b = document.createElement("button");
@@ -1538,8 +1567,8 @@ function renderOpt(r){
     '<button type="button" id="optReport" class="miniBtn">下载建议书</button>' +
     '<span id="cfOut" style="font-size:12px;"></span></div>';
   $("#optOut").innerHTML = html;
-  setPlanSummary(r.recommend, {max_stage: r.max_stage, source: "枚举寻优",
-                               report: r.report_md});
+  setPlanSummary(r.recommend, {max_stage: r.max_stage, base: r.base,
+                               source: "枚举寻优", report: r.report_md});
   const ex = $("#optExplain");
   if(ex) renderReply(ex, r.explanation || "");
   $("#cPareto").style.display = "";
@@ -1663,7 +1692,8 @@ function renderAI(r){
   const ex = $("#aiExplain");
   if(ex) renderReply(ex, r.explanation || "");
   if(r.recommend) setPlanSummary(r.recommend,
-    {max_stage: r.max_stage, source: r.fallback_used ? "AI（模板降级）" : "AI 参谋"});
+    {max_stage: r.max_stage, base: r.base,
+     source: r.fallback_used ? "AI（模板降级）" : "AI 参谋"});
   const ap = $("#aiApply");
   if(ap && r.recommend){
     ap.onclick = ()=>{
