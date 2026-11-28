@@ -79,7 +79,7 @@ def _coarse_values(intent):
     if plans:
         vals = [float(x) for x in plans]
     else:
-        vals = [0.45, 0.6, 0.75, 0.9]
+        vals = [0.45, 0.75, 1.1, 1.5, 2.0, 2.5, 3.0]
     out = []
     for v in vals:
         v = round(min(max(v, 0.2), 2.0), 2)
@@ -238,6 +238,13 @@ def run(base, text="", max_stage=None, use_ai=True):
         m = _metric(res, ref_peak)
         m.update({"name": "精修%d" % (i + 1), "a_end": a,
                   "feasible": bool(m["hmax"] <= max_stage), "source": "ai"})
+        rows.append(m)
+
+    if not any(r["feasible"] for r in rows):
+        res = _solve(base, _gate_for(base, 4.0))
+        m = _metric(res, ref_peak)
+        m.update({"name": "全开", "a_end": 4.0,
+                  "feasible": bool(m["hmax"] <= max_stage), "source": "open"})
         rows.append(m)
 
     feas = [r for r in rows if r["feasible"]]

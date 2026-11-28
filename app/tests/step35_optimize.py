@@ -43,7 +43,7 @@ def main():
     check("寻优接口可用", r.get("ok") and not r.get("need_clarify"), r.get("error"))
     check("寻优待时 <20 s", el < 20, "%.1f s" % el)
     rows = r.get("candidates") or []
-    check("候选数=7", len(rows) == 7, len(rows))
+    check("候选数≥7（含边界细化）", len(rows) >= 7, len(rows))
     check("Pareto 标记与候选等长", len(r.get("pareto") or []) == len(rows))
     check("推荐满足约束",
           r.get("recommend") is None or r["recommend"]["hmax"] <= r["max_stage"] + 1e-9,
@@ -61,8 +61,11 @@ def main():
 
     # 2) 约束过严 → 放宽建议可用
     r2 = post("/api/unsteady/optimize",
-              dict(P, text="闸上不能超过4.0米", no_ai=True, steps=7))
+              dict(P, text="闸上不能超过3.0米", no_ai=True, steps=7))
     check("过严约束判不可行", r2.get("feasible_any") is False)
+    check("全开仍不满足时给出最低可达水位",
+          bool(r2.get("no_feasible_even_open")) and (r2.get("suggest_stage") or 0) > 3.0,
+          (r2.get("min_hmax_possible"), r2.get("suggest_stage")))
     check("给出两级放宽", len(r2.get("relax") or []) == 2)
     check("放宽后存在可行解", any(x["feasible_any"] for x in r2.get("relax") or []),
           r2.get("relax"))

@@ -52,7 +52,7 @@ def main():
     check("规则模式可用", r.get("ok") and not r.get("need_clarify"))
     check("规则模式耗时 <15 s", el < 15, "%.1f s" % el)
     rows = r.get("candidates") or []
-    check("候选 4–6 个", 4 <= len(rows) <= 6, len(rows))
+    check("候选 6–10 个", 6 <= len(rows) <= 10, len(rows))
     check("候选含粗扫与精修", {c["source"] for c in rows} >= {"coarse"},
           {c["source"] for c in rows})
     check("推荐方案满足约束",

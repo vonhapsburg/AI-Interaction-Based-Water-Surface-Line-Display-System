@@ -4,6 +4,7 @@
 沿用 V4.4.0 的求解与解释管线：AI 只读结果表，数字必须可追溯。
 """
 import copy
+import math
 
 from agent import llm
 from unsteady import solver as us
@@ -17,7 +18,7 @@ def _grid(intent, steps):
         vals = [round(min(max(float(x), 0.2), 2.0), 2) for x in plans]
     else:
         import numpy as np
-        vals = [round(float(v), 2) for v in np.linspace(0.3, 1.1, max(3, min(int(steps), 11)))]
+        vals = [round(float(v), 2) for v in np.linspace(0.3, 3.0, max(3, min(int(steps), 15)))]
     out = []
     for v in vals:
         if v not in out:
@@ -84,7 +85,17 @@ def _md_table(rows):
 
 def _template(rows, max_stage, recommend, relax, robust, pareto_flags):
     if recommend is None:
-        msg = "在 0.3–1.1 m 的 %d 个候选里，没有满足“闸上≤%.1f m”的方案。" % (len(rows), max_stage)
+        if relax and all(not x["feasible_any"] for x in relax):
+            min_h = min(r["hmax"] for r in rows)
+            _txt = ("即使闸门全开，闸上最低也有约 %.2f m，仍高于“≤%.1f m”。"
+                    "建议把约束放宽到 %.1f m 以上" % (
+                        min_h, max_stage, math.ceil(min_h * 10.0) / 10.0))
+            if suggest_gate_b:
+                _txt += ("，或把闸宽从 %.1f m 加宽到 %.1f m（全开时闸上约 %.2f m）"
+                         % (suggest_gate_b["from"], suggest_gate_b["to"],
+                            suggest_gate_b["hmax"]))
+            return _txt + "。"
+        msg = "在 0.3–3.0 m 的 %d 个候选里，没有满足“闸上≤%.1f m”的方案。" % (len(rows), max_stage)
         feas = [x for x in relax if x["feasible_any"]]
         if feas:
             r = feas[0]
@@ -185,9 +196,76 @@ def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
                   "feasible": bool(m["hmax"] <= max_stage)})
         rows.append(m)
 
+    # 若初始网格都不可行，先试“全开”：确认是不是约束本身不可达
+    if not any(r["feasible"] for r in rows):
+        a_open = 4.0
+        res = ai._solve(base, ai._gate_for(base, a_open))
+        m = ai._metric(res, ref_peak)
+        m.update({"name": "全开", "a_end": a_open,
+                  "feasible": bool(m["hmax"] <= max_stage)})
+        rows.append(m)
+
     pareto = _pareto(rows)
     feas = [r for r in rows if r["feasible"]]
     recommend = min(feas, key=lambda r: r["peak"]) if feas else None
+
+    # 可行边界二分：在最后一个不可行与第一个可行之间细化，兼顾精度与耗时
+    if feas:
+        feas_sorted = sorted(feas, key=lambda r: r["a_end"])
+        first = feas_sorted[0]
+        lower = max([r for r in rows if r["a_end"] < first["a_end"] and not r["feasible"]],
+                    key=lambda r: r["a_end"], default=None)
+        if lower is not None:
+            lo, hi = lower["a_end"], first["a_end"]
+            for k in range(3):
+                mid = round((lo + hi) / 2.0, 3)
+                if any(abs(r["a_end"] - mid) < 1e-6 for r in rows):
+                    break
+                res = ai._solve(base, ai._gate_for(base, mid))
+                m = ai._metric(res, ref_peak)
+                m.update({"name": "细化%d" % (k + 1), "a_end": mid,
+                          "feasible": bool(m["hmax"] <= max_stage)})
+                rows.append(m)
+                if m["feasible"]:
+                    hi = mid
+                else:
+                    lo = mid
+            pareto = _pareto(rows)
+            feas = [r for r in rows if r["feasible"]]
+            recommend = min(feas, key=lambda r: r["peak"]) if feas else None
+
+    no_feasible_even_open = (not feas and any(
+        r["name"] == "全开" and not r["feasible"] for r in rows))
+    open_row = next((r for r in rows if r["name"] == "全开"), None)
+    min_hmax_possible = min((r["hmax"] for r in rows), default=None)
+    suggest_stage = (math.ceil(min_hmax_possible * 10.0) / 10.0
+                     if min_hmax_possible is not None else None)
+
+    # 加宽闸门：约束太紧时，给一个可执行的补救方向
+    suggest_gate_b = None
+    if not feas:
+        _g = dict(base.get("gate") or {})
+        _structs = _g.get("structures") or []
+        _b0 = float((_structs[0].get("b_g") if _structs else _g.get("b_g")) or base.get("b") or 6.0)
+        for _extra in (2.0, 4.0):
+            _b = _b0 + _extra
+            _b2 = copy.deepcopy(base)
+            _g2 = dict(_b2.get("gate") or {})
+            if _g2.get("structures"):
+                _g2["structures"] = [dict(x, b_g=_b) for x in _g2["structures"]]
+            else:
+                _g2["b_g"] = _b
+            _b2["gate"] = _g2
+            try:
+                _res = ai._solve(_b2, ai._gate_for(_b2, 4.0))
+                _hm = max((max(st["hu"]) for st in _res.get("structures") or []),
+                          default=0.0)
+                if _hm <= max_stage:
+                    suggest_gate_b = {"from": round(_b0, 2), "to": round(_b, 2),
+                                      "hmax": round(float(_hm), 3)}
+                    break
+            except Exception:
+                continue
     relax = [] if feas else _relax(rows, max_stage)
     robust = _robust(base, recommend["a_end"], max_stage) if recommend else []
 
@@ -204,6 +282,10 @@ def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
             explanation = _template(rows, max_stage, recommend, relax, robust, pareto)
     else:
         explanation = _template(rows, max_stage, recommend, relax, robust, pareto)
+    if recommend is None and suggest_gate_b:
+        explanation += (" 也可把闸宽从 %.1f m 加宽到 %.1f m（全开时闸上约 %.2f m）。"
+                        % (suggest_gate_b["from"], suggest_gate_b["to"],
+                           suggest_gate_b["hmax"]))
 
     report = _report_md(base, max_stage, rows, recommend, relax, robust,
                         explanation, pareto)
@@ -212,6 +294,11 @@ def optimize(base, text="", max_stage=None, steps=7, use_ai=False):
         "max_stage": max_stage, "reference_peak": round(ref_peak, 3),
         "candidates": rows, "pareto": pareto,
         "recommend": recommend, "feasible_any": bool(feas),
+        "no_feasible_even_open": bool(no_feasible_even_open),
+        "min_hmax_possible": (None if min_hmax_possible is None
+                              else round(float(min_hmax_possible), 3)),
+        "suggest_stage": suggest_stage,
+        "suggest_gate_b": suggest_gate_b,
         "relax": relax, "robust": robust,
         "explanation": explanation, "fallback_used": bool(fallback),
         "report_md": report,
