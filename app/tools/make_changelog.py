@@ -1,0 +1,221 @@
+# -*- coding: utf-8 -*-
+"""生成《基于AI交互的水面线展示系统 · 版本更新日志》Word 文档（通俗说明版·团队口径）。"""
+import os
+
+from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.shared import Pt, RGBColor, Cm
+
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "基于AI交互的水面线展示系统-版本更新日志.docx")
+
+VERSIONS = [('V1.0.0',
+  '初版：本地模型 + 恒定流内核',
+  ['在本地电脑上运行小模型（qwen3:4b），把一句中文描述变成渠道参数，再算水面线、画图。',
+   '能判断并画出课本上的十二种水面线（M1、M2、M3、S1、S2、S3、C1、C3、H2、H3、A2、A3）。',
+   '界面是单页：左侧填参数，右侧一张水面线图；参数写错也照算，没有检查。']),
+ ('V1.1.0',
+  '恒定流可用版与便携包',
+  ['加入合法性检查（A~I 九类）与参数范围校验，缺参数、单位错、物理矛盾会提示原因。',
+   '整理成正式项目结构，计算、判断、画图分开写。',
+   '打包便携版：内置运行环境、启动/停止脚本和说明，整包拷到别的 Windows 电脑即可运行。']),
+ ('V2.0.0',
+  '接入 DeepSeek 与自由问答',
+  ['模型通道换成 DeepSeek 在线接口，可在 DeepSeek、本地模型、关闭之间切换。', '增加自由问答：解释类问题不再被当成改参数。', '模型不可用时退回关键词规则，计算与绘图不受影响。']),
+ ('V2.1.0',
+  '预设、随机与出题',
+  ['提供十二型预设、坡度组合、50 条示例与“随机生成一个算例”。', '按当前结果出题，题目与答案里的数字都来自计算内核。', '图按教材样式重绘；支持缩放、按里程定位、水跃区间示意。']),
+ ('V2.2.0',
+  '解析策略与多段对话',
+  ['确定“规则优先、模型补缺”：规则已抽到的字段，模型不再覆盖。', '对话改参数实时落到渠段表，支持按段修改；假设性问题在副本上试算。', '增加“AI 解析 vs 内核计算”对照，证明数值只来自内核。']),
+ ('V3.0.0',
+  '非恒定流方案 A：扩散波',
+  ['新增非恒定流模块，用扩散波方程（忽略惯性项）计算水位随时间的变化。', '独立页面展示不同时刻水面线、断面流量过程线、水位—流量关系图。', '与恒定流完全隔离：不改原内核、不改原页面，只加入口。']),
+ ('V3.1.0',
+  '审计整改与稳态回归',
+  ['波速 c_k 改三段式，解释峰值到达时间的偏差。', '质量误差改称“格式校验”，另立“稳态回归”作为外部对照。', '写明扩散波局限：不能模拟急流时下游变化往上游传。']),
+ ('V3.2.0',
+  '内核修复、58 例基线与多跃位',
+  ['修五处内核缺陷（坡折命名、水跃告警、多跃位提示、梯形水跃说明、缺正常水深提示）。', '给 58 个算例做逐字段快照；改前改后结果完全一致。', '支持“陡—缓—陡—缓”出现两次水跃的情况。']),
+ ('V3.3.0',
+  '方案 B1：圣维南全方程',
+  ['新增全方程求解器（保留惯性项），用隐式格式逐时段求解。',
+   '与恒定解对比：平均差 0.15%、最大 0.36%；水量损失 0.005%；回水速度偏差 +1.4%。',
+   '页面可在“扩散波”和“全方程”之间切换。']),
+ ('V3.4.0',
+  '教学/工程模式与非恒定对话',
+  ['教学模式用扩散波（快），工程模式用全方程（能算回水）。', '非恒定页面也能聊天：改工况、问原理、按当前结果出题。', '回答只使用结果里出现过的数字，不许编“实测数据”。']),
+ ('V3.5.0',
+  '非恒定交互完整度',
+  ['加入 5 个示例算例（基本洪水、陡涨、长渠坦化、回水顶托、下游落水）。', '回水预览、随机算例、公式速查；对话区可拉伸、图上悬停读数。', '计算时显示进度和用时。']),
+ ('V3.6.0',
+  'B2-① 特征线与 B2-② 时间轴',
+  ['下游加水位扰动，画时间—里程图：理论特征线与实测到达点。', '传播速度按真实渠道参数计算，理论行程改为沿程累加。', '时间轴逐帧看水面线怎么抬起、退下。']),
+ ('V3.7.0',
+  '八条使用反馈整改',
+  ['出题题型轮换、“换一批”换角度，模型出错时用本地题库补足 3 题。', '回答重点标红，“猜你想问”按上一句延伸。', '绳套标注加引线、水面线加范围带、计算提速 3–7 倍、首页加推荐横幅。']),
+ ('V3.8.0', '图表修复与运行时测试', ['修复颜色值少写引号导致四张图全部空白的问题。', '每张图独立容错，一张出错不影响其它图。', '新增“模拟浏览器”的自动测试，直接运行画图函数。']),
+ ('V3.9.0', '精度优先与显示优化', ['公开自动加粗网格的精度影响，新增“精度优先”开关。', '精度开关置顶，① 图只画当前帧并加范围带。', '时间轴 81/121 帧，特征线按钮增加选中反馈。']),
+ ('V3.10.0',
+  '自动刷新与交互收尾',
+  ['算完或改参数后自动刷新回水预览与特征线。', '洪峰沿程表并入②卡，公式速查扩到 18 条，① 图支持滚轮缩放。', '切换教学/工程模式后自动重算；聊天区可展开，展开后建议更多。']),
+ ('V4.0.0',
+  '闸门内边界（单闸）',
+  ['工程模式下可在渠道中间加闸门，用开度与上下游水位算过闸流量。',
+   '闸门写成局部水头损失，闸前水面单调过渡。',
+   '页面新增含闸门开关、⑤ 闸门结果图与两个调度预设。',
+   '验收：稳态过闸与公式差 <0.1%，削峰约 28%，水量误差 <0.5%。']),
+ ('V4.1.0',
+  '闸门对话与多段开度',
+  ['一句话改闸门：如“2小时后关到0.5米”“闸宽6米”“1小时关到0.6，再过2小时关到0.3”。', '开度支持多段折线，页面用可增删的行填“时间/开度”。', '改完自动切工程模式并重算。']),
+ ('V4.2.0', '闸门出题与解释', ['含闸门时至少 2 道题与闸门有关，模型不足时用本地题补。', '参数摘要与出题提示带上闸门信息，回答只引用结果数字。', '解释类问题不会被误当成改参数。']),
+ ('V4.3.0', '多闸门与调度页', ['支持 2–3 座闸门；单闸结果与旧版逐点一致。', '新增“演进/调度”标签，调度页可对比多个开度方案。', '新增方案对比与调度意图接口。']),
+ ('V4.4.0',
+  'AI 调度参谋',
+  ['规则粗扫 4 个开度，AI 精修 2 个，求解器裁决并筛选可行方案。', 'AI 写推荐与解释，数字必须能在结果表中找到，否则重写或退回模板。', '缺约束先追问；不可行不硬推荐；模型不可用自动降级。']),
+ ('V4.5.0',
+  '枚举寻优与 Pareto',
+  ['在 0.3–1.1 m 内枚举候选，标 Pareto 前沿，推荐可行里峰值最小的方案。', '约束过严时给两级放宽；对推荐方案做扰动校核。', '支持反事实与 Markdown 建议书。']),
+ ('V4.6.0', '多轮调度会话与回放', ['会话记住约束、推荐与历史，支持“再保守一点”“为什么推荐它”“关到0.5呢”“改约束”。', '每轮动作可回放；附 10 条调度指令评估集。']),
+ ('V4.7.0',
+  '调度页整合与排版改版',
+  ['AI 参谋、枚举寻优、手动对比合并为一张卡，用标签切换。', '新增“当前方案”卡，可一键应用到演进页或下载建议书。', '统一表格单位，适配窄屏，补齐会话内存说明。'])]
+
+VERIFY = [
+    ("和恒定流结果对比", "58 个算例，改前改后每个数都一样"),
+    ("全方程 vs 恒定流", "平均差 0.15%、最大 0.36%"),
+    ("水量守恒", "基本不丢水，误差 0.001%–0.04%"),
+    ("回水传播速度", "实测 1.56 米/秒，理论 1.54 米/秒，差 1.4%"),
+    ("特征线上溯", "实测 610 秒，理论 649 秒，差 6%"),
+    ("计算速度", "20 公里长渠、24 小时：扩散波 7.4→2.1 秒，全方程 17.2→2.6 秒"),
+    ("闸门稳态", "过闸流量与闸孔公式偏差 <0.1%；双闸水量误差 0.04%"),
+    ("方案对比", "3 个方案约 3.4 秒；寻优 7 个候选约 7.7 秒"),
+    ("AI 可追溯", "解释中的数字必须能在结果表中找到；三次连跑推荐一致"),
+    ("自动检查", "程序约 590 项、网页 17 项"),
+]
+
+LIMITS = [
+    "只能算矩形和梯形渠道，圆形、三角形、复式断面还没做。",
+    "不能算溃坝、涌潮、闸门突然开关这类剧烈变化。",
+    "宽顶堰组合、闸门后急流与水跃只能定性显示，不能当精确值。",
+    "调度会话保存在服务内存，重启服务后清空。",
+    "寻优是有限候选的枚举结果，不是全局最优。",
+    "每条渠只能设一个上游流量过程和一个下游水位。",
+    "便携版要求 Windows 10/11 64 位，Win7 打不开。",
+    "AI 只负责听懂话，所有数字由程序算；说错会被检查拦下来。",
+]
+
+NEXT = [
+    "V4.8.0：宽顶堰内边界（自由/淹没出流切换与平滑过渡）。",
+    "比赛材料：案例说明文档、3–5 分钟演示视频、AI 解析准确率测试（20 条指令）。",
+    "可选：闸群联合调度、调度方案库与一键复现、AI 报告导出 Word。",
+]
+
+
+def set_cn_font(run, name="微软雅黑", size=None, bold=None, color=None):
+    run.font.name = name
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), name)
+    if size:
+        run.font.size = Pt(size)
+    if bold is not None:
+        run.bold = bold
+    if color:
+        run.font.color.rgb = RGBColor(*color)
+
+
+def add_numbered(doc, items, size=10.5):
+    for idx, text in enumerate(items, 1):
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Cm(0.75)
+        p.paragraph_format.first_line_indent = Cm(-0.75)
+        p.paragraph_format.space_after = Pt(3)
+        set_cn_font(p.add_run("%d. " % idx), "微软雅黑", size, True, (46, 109, 164))
+        set_cn_font(p.add_run(text), "微软雅黑", size)
+
+
+def build():
+    doc = Document()
+    sec = doc.sections[0]
+    sec.top_margin = Cm(2.2)
+    sec.bottom_margin = Cm(2.2)
+    sec.left_margin = Cm(2.4)
+    sec.right_margin = Cm(2.4)
+    normal = doc.styles["Normal"]
+    normal.font.name = "微软雅黑"
+    normal.font.size = Pt(10.5)
+    normal.element.rPr.rFonts.set(qn("w:eastAsia"), "微软雅黑")
+
+    p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    set_cn_font(p.add_run("基于 AI 交互的水面线展示系统"), "微软雅黑", 20, True, (31, 78, 121))
+    p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    set_cn_font(p.add_run("版 本 更 新 日 志"), "微软雅黑", 16, True, (46, 109, 164))
+    p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    set_cn_font(p.add_run("V1.0.0 ～ V4.7.0　|　项目团队开发记录"), "微软雅黑", 10.5, False, (120, 130, 140))
+
+    doc.add_heading("一、版本规则", level=1)
+    add_numbered(doc, [
+        "主版本号表示开发阶段：V1 探索（没接 DeepSeek）→ V2 接入 DeepSeek、完善恒定流 → V3 开发非恒定流 → V4 闸门（未开始）。",
+        "次版本号表示每一轮改动：每做完一轮改动加一，比如 V1.1.0 → V1.2.0。",
+        "第三位固定为 0；每完成一轮统一修改，次版本号加一（例如 V4.6.0 → V4.7.0）。",
+    ])
+
+    doc.add_heading("二、版本总览", level=1)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = "Light Grid Accent 1"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    hdr = table.rows[0].cells
+    for i, text in enumerate(["版本", "更新主题"]):
+        hdr[i].text = ""
+        set_cn_font(hdr[i].paragraphs[0].add_run(text), "微软雅黑", 10, True)
+    for ver, title, _ in VERSIONS:
+        row = table.add_row().cells
+        row[0].text = ""
+        set_cn_font(row[0].paragraphs[0].add_run(ver), "微软雅黑", 9.5, True)
+        row[1].text = ""
+        set_cn_font(row[1].paragraphs[0].add_run(title), "微软雅黑", 9.5)
+
+    groups = [
+        ("三、V1：探索阶段（没接 DeepSeek）", "V1."),
+        ("四、V2：接入 DeepSeek，完善恒定流", "V2."),
+        ("五、V3：开发非恒定流", "V3."),
+        ("六、V4：闸门与调度（已实现）", "V4."),
+    ]
+    for heading, prefix in groups:
+        doc.add_heading(heading, level=1)
+        for ver, title, bullets in VERSIONS:
+            if not ver.startswith(prefix):
+                continue
+            hp = doc.add_heading("", level=2)
+            set_cn_font(hp.add_run("%s　%s" % (ver, title)), "微软雅黑", 12.5, True, (31, 78, 121))
+            add_numbered(doc, bullets)
+
+    doc.add_heading("七、验证情况", level=1)
+    vt = doc.add_table(rows=1, cols=2)
+    vt.style = "Light Grid Accent 1"
+    h = vt.rows[0].cells
+    for i, text in enumerate(["检查项", "结果"]):
+        h[i].text = ""
+        set_cn_font(h[i].paragraphs[0].add_run(text), "微软雅黑", 10, True)
+    for k, v in VERIFY:
+        row = vt.add_row().cells
+        for i, text in enumerate([k, v]):
+            row[i].text = ""
+            set_cn_font(row[i].paragraphs[0].add_run(text), "微软雅黑", 9, i == 0)
+
+    doc.add_heading("八、目前还做不到的", level=1)
+    add_numbered(doc, LIMITS)
+
+    doc.add_heading("九、下一步", level=1)
+    add_numbered(doc, NEXT)
+
+    p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    set_cn_font(p.add_run("整理自开发过程与代码提交记录"), "微软雅黑", 9, False, (140, 148, 156))
+
+    doc.save(OUT)
+    return OUT
+
+
+if __name__ == "__main__":
+    print("written", build())
