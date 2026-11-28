@@ -48,6 +48,27 @@ def normal_depth(b, m, n, i0, Q):
     return 0.5 * (lo + hi)
 
 
+def critical_depth(b, m, Q, g=9.81):
+    """矩形/梯形断面临界水深：Q²B/(gA³)=1，二分求解。"""
+    Q = float(max(Q, 1e-9))
+    lo, hi = 1e-6, 50.0
+
+    def f(h):
+        A = h * (b + m * h)
+        B = b + 2.0 * m * h
+        return Q * Q * B / (g * max(A, 1e-12) ** 3) - 1.0
+
+    if f(hi) > 0:
+        return hi
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
 def kinematic_speed(b, m, n, i0, h):
     """运动波波速 c_k = (1/B)·dQ/dh（数值求导）。"""
     h = np.maximum(np.asarray(h, dtype=float), 1e-6)

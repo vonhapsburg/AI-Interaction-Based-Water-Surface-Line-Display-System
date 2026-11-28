@@ -29,7 +29,7 @@ from agent.merge import merge, turn, missing_of   # noqa: E402
 from agent import llm, adapter, legality, chat as chatmod, generator   # noqa: E402
 import gvf_core                                   # noqa: E402
 
-BUILD_ID = "2026-11-28-gate21"
+BUILD_ID = "2026-11-28-gate22"
 STATE = {"slots": {}, "texts": [], "raws": [], "chat": []}
 CACHE = {"params": None, "result": None}
 LOCK = threading.Lock()
@@ -655,6 +655,42 @@ class Handler(SimpleHTTPRequestHandler):
                         t_peak=tp, t_base=tb, t_end=te,
                         h_dn=h_dn, Nx=Nx, snap_hours=snap_hours,
                         max_steps=(150000 if precise else 60000))
+                # ---- Fr（缓流）运行期检查：两种模型统一标注 ----
+                try:
+                    d = res.setdefault("diagnostics", {})
+                    fr_max = 0.0
+                    fr_dn = 0.0
+                    for _st in (res.get("stations") or []):
+                        _hs = _st.get("h") or []
+                        _qs = _st.get("Q") or []
+                        if not _hs or len(_hs) != len(_qs):
+                            continue
+                        _h = float(_hs[-1])
+                        _q = abs(float(_qs[-1]))
+                        _A = _h * (b + m * _h)
+                        _B = b + 2.0 * m * _h
+                        _fr = _q / max(_A * float(np.sqrt(9.81 * _A / max(_B, 1e-9))), 1e-9)
+                        fr_max = max(fr_max, _fr)
+                        fr_dn = _fr
+                    h_n0 = float(us.normal_depth(b, m, n, i0, Q0))
+                    h_c0 = float(us.critical_depth(b, m, Q0))
+                    fr_max = min(float(fr_max), 99.9)
+                    d["fr_max"] = round(float(fr_max), 3)
+                    d["fr_dn"] = round(min(float(fr_dn), 99.9), 3)
+                    d["h_n0"] = round(h_n0, 4)
+                    d["h_c0"] = round(h_c0, 4)
+                    if fr_max > 1.0 or h_n0 < h_c0:
+                        d["fr_regime"] = "supercritical" if fr_max > 1.0 else "steep_normal"
+                        d["fr_warning"] = (
+                            "当前工况存在 Fr>1 的急流/陡坡特征（最大 Fr=%.2f，正常水深 %.2f m，"
+                            "临界水深 %.2f m）。本模块按缓流边界设计，结果不可信；"
+                            "请减小坡度或增大水深。" % (fr_max, h_n0, h_c0))
+                    else:
+                        d["fr_regime"] = "subcritical"
+                        d["fr_warning"] = ""
+                except Exception as _e:
+                    res.setdefault("diagnostics", {})["fr_warning"] = (
+                        "Fr 检查失败：%s: %s" % (type(_e).__name__, _e))
                 return self._json({"ok": True, "result": res})
             except Exception as e:
                 return self._json({"ok": False,

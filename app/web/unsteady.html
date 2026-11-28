@@ -447,6 +447,7 @@ window.addEventListener("unhandledrejection", function(e){
           <div><span>下游边界 h</span><b id="dHdn">—</b></div>
         </div>
         <div class="note" id="dMeta"></div>
+        <div class="note" id="frWarn" style="display:none;color:#b23c4a;font-weight:600;"></div>
         <div class="note" style="color:#8b98a6">
           说明：质量误差来自守恒型离散的代数恒等，只能证明"实现了守恒格式"，不证明物理正确。
           物理正确性看下面的稳态回归。
@@ -1025,8 +1026,17 @@ function drawDiag(R){
   $("#dHdn").textContent = d.h_dn_used.toFixed(3) + (d.h_dn_is_normal ? "（正常水深）" : "（给定）");
   const A0 = m.h_n * (m.b + m.m * m.h_n);
   const v0 = m.Q0 / A0;
+  const fw = $("#frWarn");
+  if(fw){
+    if(d && d.fr_warning){
+      fw.textContent = d.fr_warning;
+      fw.style.display = "";
+    }else{
+      fw.style.display = "none";
+    }
+  }
   if(isPre){
-    $("#dMeta").innerHTML =
+  $("#dMeta").innerHTML =
       "<b>求解器：圣维南全方程 · Preissmann 隐式</b>（θ=" + d.theta + "，ψ=" + d.psi + "）<br>" +
       "Newton 迭代合计 " + d.newton_iters + " 次，失败 " + d.newton_failed + " 次；" +
       "Δt=" + d.dt + " s（无条件稳定）<br>" +
