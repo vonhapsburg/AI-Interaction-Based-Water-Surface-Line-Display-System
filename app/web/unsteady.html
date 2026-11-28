@@ -60,9 +60,12 @@
   .modeBadge.engineering{background:#e6f4ec;color:#2f7d54;}
 
   /* 示例算例 */
-  .presets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px;}
-  .preset{font-size:11.5px;padding:4px 9px;border-radius:99px;border:1px solid var(--line);
-          background:#fbfcfd;color:#41556b;cursor:pointer;font-family:inherit;}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 10px;}
+  .preset{font-size:11.5px;padding:5px 6px;border-radius:8px;border:1px solid var(--line);
+          background:#fbfcfd;color:#41556b;cursor:pointer;font-family:inherit;
+          width:auto;margin:0;text-align:center;white-space:nowrap;overflow:hidden;
+          text-overflow:ellipsis;}
+  .preset.rand{grid-column:span 2;}
   .preset:hover{border-color:var(--accent2);color:var(--accent);background:#f2f7fc;}
   .preset.eng{background:#f4fbf7;border-color:#cfe4d8;color:#2f7d54;}
 
@@ -392,6 +395,8 @@ window.addEventListener("unhandledrejection", function(e){
           <button class="preset eng" data-p="drawdown">下游落水</button>
           <button class="preset eng" data-p="pre_release">预泄腾库容</button>
           <button class="preset eng" data-p="gate_cut">关闸削峰</button>
+          <button class="preset eng" data-p="two_gate">双闸联调</button>
+          <button class="preset eng" data-p="two_gate_stagger">双闸错峰</button>
           <button class="preset rand" id="randBtn" type="button">🎲 随机算例</button>
           <button class="preset rand" id="randGateBtn" type="button">🎲 随机闸门</button>
         </div>
@@ -1952,7 +1957,13 @@ const PRESETS = {
   pre_release:{mode:"engineering", L:2000, b:5, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
                Nx:81, gate:{s:50,b:5,z:0,mu:0.62,a0:1.2,a1:0.9,tc:0.5,tr:0.5}},
   gate_cut:  {mode:"engineering", L:2000, b:6, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
-               Nx:81, gate:{s:50,b:6,z:0,mu:0.62,a0:1.0,a1:0.6,tc:0.8,tr:0.5}}
+               Nx:81, gate:{s:50,b:6,z:0,mu:0.62,a0:1.0,a1:0.6,tc:0.8,tr:0.5}},
+  two_gate:  {mode:"engineering", L:2000, b:6, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
+               Nx:81, gate:{s:30,b:6,z:0,mu:0.62,a0:1.0,a1:0.6,tc:0.8,tr:0.5},
+               gate2:{s:70,b:6,z:0,mu:0.62,a0:1.0,a1:0.5,tc:1.2,tr:0.5}},
+  two_gate_stagger: {mode:"engineering", L:2000, b:6, m:0, n:0.015, i0:0.001, Q0:10, Qpeak:30, tp:1, tb:2, te:8, hdn:1.4,
+               Nx:81, gate:{s:30,b:6,z:0,mu:0.62,a0:1.0,a1:0.4,tc:0.5,tr:0.4},
+               gate2:{s:70,b:6,z:0,mu:0.62,a0:1.0,a1:0.7,tc:2.0,tr:0.5}}
 };
 
 function applyPreset(key){
@@ -1975,6 +1986,15 @@ function applyPreset(key){
     set("#gateS",g.s); set("#gateB",g.b); set("#gateZ",g.z); set("#gateMu",g.mu);
     set("#gateA0",g.a0); set("#gateA1",g.a1); set("#gateTc",g.tc); set("#gateTr",g.tr);
     clearGateSched();
+  }
+  const g2 = p.gate2 || null;
+  const g2on = $("#gate2On");
+  if(g2on){ g2on.checked = !!g2; }
+  const g2box = $("#gate2Box");
+  if(g2box){ g2box.style.display = g2 ? "" : "none"; }
+  if(g2){
+    set("#gate2S",g2.s); set("#gate2B",g2.b); set("#gate2Z",g2.z); set("#gate2Mu",g2.mu);
+    set("#gate2A0",g2.a0); set("#gate2A1",g2.a1); set("#gate2Tc",g2.tc); set("#gate2Tr",g2.tr);
   }
   refreshHnHint();
   runCase();
