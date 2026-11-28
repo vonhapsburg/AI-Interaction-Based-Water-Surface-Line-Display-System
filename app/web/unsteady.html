@@ -1342,8 +1342,9 @@ function setPlanSummary(rec, extra){
 
 function switchSchedMode(m){
   document.querySelectorAll(".modeTab").forEach(b=>b.classList.toggle("on", b.dataset.sm === m));
-  ["ai","opt","cmp"].forEach(k=>{
-    const p = $("#panel" + k.toUpperCase());
+  const panels = {ai: "panelAI", opt: "panelOpt", cmp: "panelCmp"};
+  Object.keys(panels).forEach(k=>{
+    const p = $("#" + panels[k]);
     if(p) p.style.display = (k === m) ? "" : "none";
   });
 }
